@@ -1,0 +1,181 @@
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --border: #1f2933;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #3b82f6;
+}
+
+/* RESET + HEIGHT */
+* {
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+
+
+html,
+body,
+#root {
+    display: flex;
+  flex-direction: column; /* Header oben, Content darunter */
+  height: 100vh;
+}
+
+/* BODY NUR FARBE – KEIN LAYOUT */
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ROOT = HAUPT-LAYOUT */
+#root {
+  display: flex;
+  flex-direction: column; /* Header oben, Content darunter */
+  width: 100%;
+  height: 100vh;
+}
+
+/* HEADER */
+.header {
+  padding: 16px 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+/* CONTENT WRAPPER */
+.content-wrapper {
+  display: flex; /* Sidebar + Main nebeneinander */
+  flex: 1;       /* nimmt restliche Höhe */
+  width: 100%;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.sidebar h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input[type="file"],
+input[type="text"] {
+  background: #020617;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 6px;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* MAIN */
+.main {
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* nimmt den restlichen Platz */
+}
+
+/* CHAT WRAPPER */
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* CHAT */
+.chat {
+  flex: 1;
+  width: 100%;
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.titleChat {
+  padding-left: 24px;
+  padding-bottom: 14px;
+  font-size: 18px;
+}
+
+/* MESSAGE */
+.message {
+  max-width: 70%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.user {
+  align-self: flex-end;
+  background: var(--accent);
+}
+
+.assistant {
+  align-self: flex-start;
+  background: #020617;
+  border: 1px solid var(--border);
+}
+
+/* INPUT */
+.input-bar {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.input-bar input {
+  flex: 1;
+}
+
+.content-wrapper {
+  display: flex; /* Sidebar + Chat nebeneinander */
+  flex: 1;       /* nimmt restliche Höhe */
+  width: 100%;
+}
