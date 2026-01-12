@@ -21,6 +21,7 @@ body,
     display: flex;
   flex-direction: column; /* Header oben, Content darunter */
   height: 100vh;
+  overflow: hidden;
 }
 
 /* BODY NUR FARBE – KEIN LAYOUT */
@@ -33,8 +34,8 @@ body {
 #root {
   display: flex;
   flex-direction: column; /* Header oben, Content darunter */
-  width: 100%;
-  height: 100vh;
+  height: 100vh;           /* gesamte Viewport-Höhe */
+  overflow: hidden;        /* verhindert globalen Scroll */
 }
 
 /* HEADER */
@@ -43,13 +44,15 @@ body {
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  font-size: 24px;
 }
 
 /* CONTENT WRAPPER */
 .content-wrapper {
-  display: flex; /* Sidebar + Main nebeneinander */
-  flex: 1;       /* nimmt restliche Höhe */
+  display: flex; /* Sidebar + Chat nebeneinander */
+  flex: 1;       /* nimmt restliche Höhe ein */
   width: 100%;
+  overflow: hidden; /* wichtig, damit nur Chat scrollt */
 }
 
 /* SIDEBAR */
@@ -62,6 +65,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  overflow: auto;
 }
 
 .sidebar h2 {
