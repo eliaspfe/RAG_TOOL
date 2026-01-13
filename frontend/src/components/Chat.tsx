@@ -36,13 +36,13 @@ const Chat: React.FC = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    console.log("Sending query to backend:", userMessage.text);
 
-    fetch("http://0.0.0.0:8000/run_query", {
+    fetch("http://localhost:8000/run_query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: userMessage.text,
-        max_steps: 30,
       }),
     })
       .then((res) => res.json())
@@ -52,7 +52,7 @@ const Chat: React.FC = () => {
           {
             id: Date.now() + 1,
             sender: "assistant",
-            text: data.result,
+            text: data.content,
           },
         ]);
       });

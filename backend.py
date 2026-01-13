@@ -3,8 +3,17 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from langchain_core.messages import AIMessage
+
+
+from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import InMemorySaver
 
 app = FastAPI()
+
+SYS_PROMPT = "You are a helpful assistant."
 
 origins = ["http://localhost:5173"]
 
@@ -18,10 +27,41 @@ app.add_middleware(
 
 load_dotenv(override=True)
 
+# initialize in-memory saver for message history
+checkpointer = InMemorySaver()
+
+
+# initialize the language model
+model = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0.7,
+    # ... (other params)
+)
+agent = create_agent(model, system_prompt=SYS_PROMPT, checkpointer=checkpointer)
+config = {"configurable": {"thread_id": "1"}}
+
+
+class LLMRequest(BaseModel):
+    query: str
+
+
+def get_latest_ai_message(messages) -> AIMessage | None:
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            return msg
+    return None
+
 
 @app.post("/run_query")
-async def run_query():
-    return None
+def run_query(request: LLMRequest) -> dict:
+    response = agent.invoke(
+        {"messages": [{"role": "user", "content": request.query}]},
+        config=config,
+    )
+
+    latest_ai = get_latest_ai_message(response["messages"])
+
+    return {"content": latest_ai.content}
 
 
 if __name__ == "__main__":
