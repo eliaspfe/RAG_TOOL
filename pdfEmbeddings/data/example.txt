@@ -1,0 +1,5 @@
+Das ist der erste Chunk. Er enthält Informationen über das RAG-System.
+Das ist der zweite Chunk. Hier wird erklärt, wie Embeddings funktionieren.
+Das ist der dritte Chunk. DuckDB ist eine embedded Datenbank mit Vektor-Unterstützung.
+Das ist der vierte Chunk. Sentence Transformers erstellen semantische Embeddings aus Text.
+Das ist der fünfte Chunk. Docker Compose orchestriert mehrere Container gleichzeitig.

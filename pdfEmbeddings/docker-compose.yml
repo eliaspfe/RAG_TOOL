@@ -1,0 +1,37 @@
+services:
+  # FastAPI Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend.py:/app/backend.py
+      - ./data:/app/data
+      - ./db:/app/db
+    environment:
+      - DUCKDB_PATH=/app/db/vector.duckdb
+    depends_on:
+      - embedding-processor
+    networks:
+      - rag-network
+
+  # Embedding Processor Service
+  embedding-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.embeddings
+    volumes:
+      - ./data:/app/data
+      - ./db:/app/db
+    environment:
+      - DUCKDB_PATH=/app/db/vector.duckdb
+      - EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-de
+      - EMBEDDING_DIM=768
+    networks:
+      - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
