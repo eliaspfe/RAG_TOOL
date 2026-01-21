@@ -13,6 +13,20 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 app = FastAPI()
 
+
+# service:
+# - embedding model
+# - frontend
+# backend: inklusive RAGPIPLINE Klasse
+
+# pipline = RAGPIPLINE()
+
+# funktionen der Klasse
+# pipeline.ducklake(Dateipfad) Noahs Teil -> 3 Layers, Daten werden aus den PDFs extrahiert und in DuckDB gespeichert
+# pipline.embed_chunks_and_save_to_duckdb() Felix Teil -> Chunks laufen durch das Embedding Model und werden in DuckDB gespeichert
+# pipline.build_prompt_with_context(user_query) -> User Prompt wird Embedded, ähnlichkeitssuche in der DuckDB, Kontext wird zurückgegeben (string)
+
+
 SYS_PROMPT = "You are a helpful assistant."
 
 origins = ["http://localhost:5173"]
@@ -54,6 +68,11 @@ def get_latest_ai_message(messages) -> AIMessage | None:
 
 @app.post("/run_query")
 def run_query(request: LLMRequest) -> dict:
+    # 1. Retreive context from pdf document
+    # context = retrieve_context_from_pdf(request.query)
+    # 2. Build Prompt LLM with context and user query
+
+    # 3. Invoke LLM with the prompt
     response = agent.invoke(
         {"messages": [{"role": "user", "content": request.query}]},
         config=config,
