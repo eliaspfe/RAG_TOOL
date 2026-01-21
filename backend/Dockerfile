@@ -3,6 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY backend.py .
+COPY ragpipeline.py .
 COPY .env .
 COPY requirements.txt .
 

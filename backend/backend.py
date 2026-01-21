@@ -11,6 +11,10 @@ from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 
+from ragpipeline import RagPipeline
+
+pipeline = RagPipeline()
+
 app = FastAPI()
 
 
@@ -64,6 +68,13 @@ def get_latest_ai_message(messages) -> AIMessage | None:
         if isinstance(msg, AIMessage):
             return msg
     return None
+
+
+# Test Ragpipeline Object
+@app.get("/test")
+def test_endpoint():
+    x = pipeline.test_func()
+    return {"result": x}
 
 
 @app.post("/run_query")
