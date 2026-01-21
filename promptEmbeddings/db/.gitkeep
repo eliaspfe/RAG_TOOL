@@ -1,0 +1,3 @@
+# Datenbank-Verzeichnis (wird von Docker erstellt)
+*.duckdb
+*.duckdb.wal

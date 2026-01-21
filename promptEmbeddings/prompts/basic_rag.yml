@@ -1,0 +1,11 @@
+name: basic_rag
+description: Standard RAG Prompt für einfache Frage-Antwort
+template: |
+  Given the following context, answer the question.
+
+  Question: {query}
+
+  Context:
+  {context}
+
+  Answer ONLY from the context provided. If the answer is not in the context, say "I don't know".

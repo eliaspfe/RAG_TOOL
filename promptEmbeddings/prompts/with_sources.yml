@@ -1,0 +1,17 @@
+name: rag_with_sources
+description: RAG Prompt mit Quellenangabe
+template: |
+  You are a helpful assistant. Answer the question based on the context provided below.
+
+  Question: {query}
+
+  Context:
+  {context}
+
+  Instructions:
+  - Answer ONLY based on the provided context
+  - If the answer is not in the context, respond with "I don't know"
+  - Cite relevant parts of the context in your answer
+  - Be concise and factual
+
+  Answer:

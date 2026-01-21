@@ -1,0 +1,18 @@
+name: structured_rag
+description: RAG Prompt für strukturierte Antworten
+template: |
+  Based on the context below, provide a structured answer to the question.
+
+  Question: {query}
+
+  Context:
+  {context}
+
+  Please structure your answer as follows:
+  1. Direct Answer: Provide a concise answer to the question
+  2. Supporting Details: Include relevant details from the context
+  3. Confidence: Rate your confidence (High/Medium/Low) based on the context
+
+  If you cannot answer based on the context, clearly state "I don't know".
+
+  Answer:
