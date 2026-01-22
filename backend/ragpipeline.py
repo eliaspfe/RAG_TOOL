@@ -516,21 +516,21 @@ class RagPipeline:
         # Schritt 1: Chunks embedden
         print(f"[{datetime.now()}] Schritt 1/2: Verarbeite Chunks aus gold_chunks...")
         chunk_results = self.embed_chunks_and_save_to_duckdb(chunk_config_id, doc_id)
-        
+        """
         # Schritt 2: Tabellen embedden
         print(f"\n[{datetime.now()}] Schritt 2/2: Verarbeite Tabellen aus silver_tables...")
         table_results = self.embed_tables_and_save_to_duckdb(doc_id)
-        
+        """
         # Kombinierte Statistiken
-        total_inserted = chunk_results["inserted"] + table_results["inserted"]
-        total_skipped = chunk_results["skipped"] + table_results["skipped"]
-        total_processed = chunk_results["total"] + table_results["total"]
+        total_inserted = chunk_results["inserted"] #+ table_results["inserted"]
+        total_skipped = chunk_results["skipped"] #+ table_results["skipped"]
+        total_processed = chunk_results["total"] #+ table_results["total"]
         
         print(f"\n{'='*60}")
         print(f"EMBEDDING-VERARBEITUNG ABGESCHLOSSEN")
         print(f"{'='*60}")
         print(f"Chunks:   {chunk_results['inserted']} neu, {chunk_results['skipped']} übersprungen ({chunk_results['total']} gesamt)")
-        print(f"Tabellen: {table_results['inserted']} neu, {table_results['skipped']} übersprungen ({table_results['total']} gesamt)")
+        #print(f"Tabellen: {table_results['inserted']} neu, {table_results['skipped']} übersprungen ({table_results['total']} gesamt)")
         print(f"Total:    {total_inserted} neu, {total_skipped} übersprungen ({total_processed} gesamt)")
         print(f"{'='*60}\n")
         
@@ -539,7 +539,7 @@ class RagPipeline:
         
         return {
             "chunks": chunk_results,
-            "tables": table_results,
+           # "tables": table_results,
             "summary": {
                 "total_inserted": total_inserted,
                 "total_skipped": total_skipped,
