@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Installiere System-Dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Kopiere Requirements
+COPY requirements-embedding-service.txt .
+RUN pip install --no-cache-dir -r requirements-embedding-service.txt
+
+# Kopiere Service
+COPY embedding_service.py .
+
+# Umgebungsvariablen
+ENV EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-de
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8001
+
+CMD ["python", "embedding_service.py"]

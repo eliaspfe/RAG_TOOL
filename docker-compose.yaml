@@ -1,10 +1,31 @@
 services:
+  # Embedding Service - Separater Container für Embedding-Modell
+  embedding-service:
+    build:
+      context: ./embedding
+      dockerfile: Dockerfile.embedding
+    ports:
+      - "8001:8001"
+    environment:
+      - EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-de
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8001
+    depends_on:
+      - embedding-service
     networks:
       - app-network
 
@@ -16,6 +37,7 @@ services:
       - "5173:80"
     networks:
       - app-network
+      
 networks:
   app-network:
     driver: bridge
