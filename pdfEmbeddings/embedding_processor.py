@@ -7,46 +7,20 @@ import time
 import json
 
 class TextEmbeddingProcessor:
-    """
-    Verarbeitet bereits gechunkte Text-Dokumente und speichert sie als Vektoren in DuckDB
-    """
+    
+    # Verarbeitet bereits gechunkte Text-Dokumente und speichert sie als Vektoren in DuckDB
     
     def __init__(self, db_path: str, model_name: str = "jinaai/jina-embeddings-v2-base-de", embedding_dim: int = 768):
-        """
-        Initialisiert den Processor
-        
-        Args:
-            db_path: Pfad zur DuckDB Datenbank
-            model_name: Name des Embedding-Modells
-            embedding_dim: Dimension der Embeddings (768 für Jina v2)
-        """
+      # Initialisiert den Processor
+      
         self.db_path = db_path
         self.model_name = model_name
         self.embedding_dim = embedding_dim
         self.model = None
         self.conn = None
         
-    def log(self, level: str, message: str, details: dict = None):
-        """
-        Schreibt Log-Einträge in die Datenbank
-        
-        Args:
-            level: Log-Level (INFO, WARNING, ERROR, DEBUG)
-            message: Log-Nachricht
-            details: Optionale zusätzliche Details als JSON
-        """
-        if self.conn:
-            try:
-                details_json = json.dumps(details) if details else None
-                self.conn.execute("""
-                    INSERT INTO processing_logs (level, message, details)
-                    VALUES (?, ?, ?)
-                """, (level, message, details_json))
-            except Exception:
-                pass  # Fehler beim Logging ignorieren
-        
     def initialize(self):
-        """Initialisiert das Embedding-Modell und die Datenbank"""
+        #Initialisiert das Embedding-Modell und die Datenbank
         print(f"[{datetime.now()}] Lade Embedding-Modell: {self.model_name}")
         self.model = SentenceTransformer(self.model_name, trust_remote_code=True)
         print(f"[{datetime.now()}] Modell geladen!")
@@ -56,20 +30,6 @@ class TextEmbeddingProcessor:
         # Installiere und lade VSS Extension für Vektor-Ähnlichkeitssuche
         self.conn.execute("INSTALL vss;")
         self.conn.execute("LOAD vss;")
-        
-        # Erstelle Log-Tabelle
-        self.conn.execute("""
-            CREATE SEQUENCE IF NOT EXISTS processing_logs_seq START 1;
-        """)
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS processing_logs (
-                id INTEGER PRIMARY KEY DEFAULT nextval('processing_logs_seq'),
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                level VARCHAR,
-                message TEXT,
-                details TEXT
-            )
-        """)
         
         # Erstelle Tabelle für Text-Chunks mit Vektoren
         self.conn.execute("""
@@ -87,10 +47,6 @@ class TextEmbeddingProcessor:
             )
         """)
         
-        self.log("INFO", "System initialisiert", {
-            "model": self.model_name,
-            "db_path": self.db_path
-        })
         print(f"[{datetime.now()}] System erfolgreich initialisiert!")
         
     def load_chunked_text(self, file_path: str) -> List[str]:
@@ -139,26 +95,15 @@ class TextEmbeddingProcessor:
             print(f"[{datetime.now()}] Lade Chunks aus: {os.path.basename(file_path)}")
             chunks = self.load_chunked_text(file_path)
             print(f"[{datetime.now()}] {len(chunks)} Chunks geladen")
-            self.log("INFO", "Datei geladen", {
-                "file": os.path.basename(file_path),
-                "chunks": len(chunks)
-            })
             
             if not chunks:
                 print(f"[{datetime.now()}] WARNUNG: Keine Chunks in {os.path.basename(file_path)}")
-                self.log("WARNING", "Keine Chunks gefunden", {
-                    "file": os.path.basename(file_path)
-                })
                 return
             
             # Erstelle Embeddings
             print(f"[{datetime.now()}] Erstelle Embeddings...")
             embeddings = self.model.encode(chunks, show_progress_bar=False)
             print(f"[{datetime.now()}] Embeddings erstellt: {len(embeddings)}")
-            self.log("DEBUG", "Embeddings erstellt", {
-                "file": os.path.basename(file_path),
-                "count": len(embeddings)
-            })
             
             # Speichere in Datenbank
             print(f"[{datetime.now()}] Speichere in DB...")
@@ -174,17 +119,8 @@ class TextEmbeddingProcessor:
                 except Exception:
                     skipped += 1
             print(f"[{datetime.now()}] In DB gespeichert: {inserted} neu, {skipped} übersprungen (Duplikate)")
-            
-            self.log("INFO", "Chunks gespeichert", {
-                "file": os.path.basename(file_path),
-                "count": len(chunks)
-            })
         except Exception as e:
             print(f"[{datetime.now()}] FEHLER bei {os.path.basename(file_path)}: {e}")
-            self.log("ERROR", "Fehler bei Verarbeitung", {
-                "file": os.path.basename(file_path),
-                "error": str(e)
-            })
         
     def process_directory(self, directory: str, file_extensions: List[str] = [".txt", ".jsonl"]):
         """
@@ -199,45 +135,15 @@ class TextEmbeddingProcessor:
         
         print(f"[{datetime.now()}] Gefundene Dateien: {len(files)} - {files}")
         
-        self.log("INFO", "Verarbeitung gestartet", {
-            "directory": directory,
-            "files_found": len(files)
-        })
-        
         for file in files:
             file_path = os.path.join(directory, file)
             print(f"[{datetime.now()}] Verarbeite: {file}")
             self.process_chunked_file(file_path)
             print(f"[{datetime.now()}] Fertig: {file}")
     
-    def search_similar(self, query: str, top_k: int = 5) -> List[Tuple[str, float]]:
-        """
-        Sucht ähnliche Text-Chunks zu einer Anfrage
-        
-        Args:
-            query: Suchanfrage
-            top_k: Anzahl der Ergebnisse
-            
-        Returns:
-            Liste von (Text, Ähnlichkeitsscore) Tupeln
-        """
-        # Erstelle Embedding für Query
-        query_embedding = self.model.encode([query])[0]
-        
-        # Suche ähnliche Vektoren
-        result = self.conn.execute(f"""
-            SELECT chunk_text, array_cosine_similarity(embedding, ?::FLOAT[{self.embedding_dim}]) as similarity
-            FROM text_embeddings
-            ORDER BY similarity DESC
-            LIMIT ?
-        """, (query_embedding.tolist(), top_k)).fetchall()
-        
-        return result
-    
     def close(self):
-        """Schließt die Datenbankverbindung"""
-        if self.conn:
-            self.log("INFO", "System heruntergefahren", {})
+        #chließt die Datenbankverbindung
+           if self.conn:
             self.conn.close()
 
 
@@ -263,20 +169,12 @@ def main():
         processor.process_directory(data_dir)
     else:
         print(f"[{datetime.now()}] Keine Dateien gefunden in {data_dir}")
-        processor.log("WARNING", "Keine Dateien gefunden", {
-            "directory": data_dir,
-            "expected_formats": [".txt", ".jsonl"]
-        })
     
     # Zeige Statistiken
     stats = processor.conn.execute(
         "SELECT COUNT(*) as count, COUNT(DISTINCT source_file) as files FROM text_embeddings"
     ).fetchone()
     print(f"[{datetime.now()}] Verarbeitung abgeschlossen: {stats[0]} Chunks, {stats[1]} Dateien")
-    processor.log("INFO", "Verarbeitung abgeschlossen", {
-        "total_chunks": stats[0],
-        "total_files": stats[1]
-    })
     
     processor.close()
     

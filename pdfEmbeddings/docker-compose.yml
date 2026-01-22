@@ -2,12 +2,12 @@ services:
   # FastAPI Backend Service
   backend:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./backend.py:/app/backend.py
+      - ../backend.py:/app/backend.py
       - ./data:/app/data
       - ./db:/app/db
     environment:
