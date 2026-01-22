@@ -53,17 +53,6 @@ class RagPipeline:
             self.embedding_dim = 768
             self.model_name = "unknown"
     
-    def _check_embedding_service(self):
-        """Prüft ob der Embedding-Service erreichbar ist"""
-        try:
-            response = requests.get(f"{self.embedding_service_url}/health", timeout=5)
-            if response.status_code == 200:
-                print(f"[{datetime.now()}] Embedding-Service erreichbar: {self.embedding_service_url}")
-            else:
-                print(f"[{datetime.now()}] WARNUNG: Embedding-Service antwortet nicht korrekt")
-        except Exception as e:
-            print(f"[{datetime.now()}] WARNUNG: Embedding-Service nicht erreichbar: {e}")
-    
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         # Erstellt Embeddings für eine Liste von Texten über den Embedding-Service
         """     
@@ -173,7 +162,7 @@ class RagPipeline:
     # ============================================================================
     # FELIX'S BEREICH: Embedding-Funktionalität
     # ============================================================================
-    def load_chunks_from_gold(self, chunk_config_id: str = None, doc_id: int = None) -> List[dict]: #Felix
+    def load_chunks_from_gold(self, chunk_config_id: str = None, doc_id: int = None) -> List[dict]:
         """
         Lädt Chunks aus der gold_chunks Tabelle
         
@@ -502,6 +491,61 @@ class RagPipeline:
             "total_embeddings": chunk_stats[0] + table_stats[0],
             "unique_docs": chunk_stats[1],
             "unique_tables": table_stats[1]
+        }
+    
+    def process_all_embeddings(self, chunk_config_id: str = None, doc_id: int = None) -> dict:
+        """
+        High-Level Funktion: Verarbeitet alle Embeddings (Chunks + Tabellen)
+        
+        Diese Funktion orchestriert den kompletten Embedding-Prozess:
+        1. Lädt und embeddet alle Chunks aus gold_chunks
+        2. Lädt und embeddet alle Tabellen aus silver_tables
+        3. Gibt kombinierte Statistiken zurück
+        
+        Args:
+            chunk_config_id: Optional - filtert Chunks nach spezifischer Konfiguration
+            doc_id: Optional - filtert nach spezifischem Dokument (Chunks + Tabellen)
+            
+        Returns:
+            Dictionary mit detaillierten Statistiken für Chunks und Tabellen
+        """
+        print(f"\n{'='*60}")
+        print(f"EMBEDDING-VERARBEITUNG GESTARTET")
+        print(f"{'='*60}\n")
+        
+        # Schritt 1: Chunks embedden
+        print(f"[{datetime.now()}] Schritt 1/2: Verarbeite Chunks aus gold_chunks...")
+        chunk_results = self.embed_chunks_and_save_to_duckdb(chunk_config_id, doc_id)
+        
+        # Schritt 2: Tabellen embedden
+        print(f"\n[{datetime.now()}] Schritt 2/2: Verarbeite Tabellen aus silver_tables...")
+        table_results = self.embed_tables_and_save_to_duckdb(doc_id)
+        
+        # Kombinierte Statistiken
+        total_inserted = chunk_results["inserted"] + table_results["inserted"]
+        total_skipped = chunk_results["skipped"] + table_results["skipped"]
+        total_processed = chunk_results["total"] + table_results["total"]
+        
+        print(f"\n{'='*60}")
+        print(f"EMBEDDING-VERARBEITUNG ABGESCHLOSSEN")
+        print(f"{'='*60}")
+        print(f"Chunks:   {chunk_results['inserted']} neu, {chunk_results['skipped']} übersprungen ({chunk_results['total']} gesamt)")
+        print(f"Tabellen: {table_results['inserted']} neu, {table_results['skipped']} übersprungen ({table_results['total']} gesamt)")
+        print(f"Total:    {total_inserted} neu, {total_skipped} übersprungen ({total_processed} gesamt)")
+        print(f"{'='*60}\n")
+        
+        # Hole aktuelle Datenbankstatistiken
+        db_stats = self.get_stats()
+        
+        return {
+            "chunks": chunk_results,
+            "tables": table_results,
+            "summary": {
+                "total_inserted": total_inserted,
+                "total_skipped": total_skipped,
+                "total_processed": total_processed
+            },
+            "database_stats": db_stats
         }
     
     def close(self):
