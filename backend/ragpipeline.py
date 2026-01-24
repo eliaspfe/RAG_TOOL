@@ -12,6 +12,7 @@ class RagPipeline:
         self,
         db_path: str = "DuckLake/ducklake.duckdb",
         embedding_service_url: str = "http://embedding-service:8001",
+        llm_service_url: str = "http://llm-service:11434",
         schema_name: str = "embeddings"
     ):
         """
@@ -24,13 +25,16 @@ class RagPipeline:
         """
         self.db_path = db_path
         self.embedding_service_url = embedding_service_url
+        self.llm_service_url = llm_service_url
         self.schema_name = schema_name
         self.embedding_dim = None
         self.model_name = None
+        self.llm_model_name = None
         self.conn = None
         
         # Initialisiere bei Instanziierung
         self._fetch_model_info()
+        self._fetch_llm_model_info()
         self._initialize_db()
     
     def _fetch_model_info(self):
@@ -52,6 +56,21 @@ class RagPipeline:
             print(f"[{datetime.now()}] Verwende Standard-Dimension: 768")
             self.embedding_dim = 768
             self.model_name = "unknown"
+    
+    def _fetch_llm_model_info(self):
+        """Holt Modell-Informationen vom LLM-Service"""
+        try: 
+            response_llm = requests.get(f"{self.llm_service_url}/model-info", timeout=30)
+            response_llm.raise_for_status()
+            info = response_llm.json()
+
+            self.llm_model_name = info["model_name"]
+            print(f"[{datetime.now()}] LLM-Service verbunden:")
+            print(f"  - Modell: {self.llm_model_name}")
+
+        except Exception as e:
+            print(f"[{datetime.now()}] FEHLER: Kann LLM Modell-Info nicht abrufen: {e}")
+            self.llm_model_name = "unknown"
     
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         # Erstellt Embeddings für eine Liste von Texten über den Embedding-Service
@@ -557,25 +576,173 @@ class RagPipeline:
     # ============================================================================
     # LISA'S BEREICH: RAG Prompt-Building und Similarity Search
     # ============================================================================
-    def build_prompt_with_context(self, user_input) -> str:  # Lisa
+
+    def similarity_search(self, user_input: str, k: int = 2) -> List[dict]:
         """
-        TODO (Lisa): Implementiere hier die RAG-Logik
-        - Similarity Search in embeddings.chunk_embeddings und embeddings.table_embeddings
-        - Kontext-Retrieval basierend auf User-Input
-        - Prompt-Building für LLM
+        Führt Similarity Search in chunk_embeddings durch
         
         Args:
             user_input: Die Frage/Anfrage des Users
+            k: Anzahl der Top-K ähnlichsten Chunks
+            
+        Returns:
+            Liste von Chunk-Dictionaries mit Similarity-Scores
+        """
+        try:
+            # Erstelle Embedding für die User-Query
+            print(f"[{datetime.now()}] Erstelle Embedding für Query: {user_input}...")
+            query_embedding = self.get_embeddings([user_input])[0]
+            print(f"[{datetime.now()}] Query-Embedding erstellt")
+            
+            # Führe Similarity Search mit DuckDB VSS durch
+            # Verwende array_cosine_similarity für Cosine-Ähnlichkeit
+            results = self.conn.execute(f"""
+                SELECT 
+                    embedding_id,
+                    chunk_id,
+                    doc_id,
+                    embedding_text,
+                    array_cosine_similarity(embedding, ?::FLOAT[{self.embedding_dim}]) as similarity_score,
+                    chunk_config_id,
+                    model_name
+                FROM {self.schema_name}.chunk_embeddings
+                ORDER BY similarity_score DESC
+                LIMIT ?
+            """, [query_embedding, k]).fetchall()
+            
+            # Konvertiere zu Dictionary-Liste
+            columns = ['embedding_id', 'chunk_id', 'doc_id', 'embedding_text', 
+                      'similarity_score', 'chunk_config_id', 'model_name']
+            
+            retrieved_docs = []
+            for row in results:
+                doc = dict(zip(columns, row))
+                retrieved_docs.append(doc)
+            
+            print(f"[{datetime.now()}] {len(retrieved_docs)} ähnliche Chunks gefunden")
+            for i, doc in enumerate(retrieved_docs):
+                print(f"  [{i+1}] Similarity: {doc['similarity_score']:.4f} - Chunk ID: {doc['chunk_id']}")
+            return retrieved_docs
+            
+        except Exception as e:
+            print(f"[{datetime.now()}] FEHLER bei Similarity Search: {e}")
+            raise
+        
+    def build_prompt_with_context(self, user_input, k: int = 2) -> str:
+
+        """"
+        Args:
+            user_input: Die Frage/Anfrage des Users
+            k: Anzahl der Top-K ähnlichsten Chunks für Kontext
             
         Returns:
             Formatierter Prompt mit Kontext für das LLM
         """
-        # Placeholder-Implementierung
-        context = "Dies ist ein Beispielkontext aus der DuckDB."
-        prompt = (
-            "Based on the following context: "
-            + context
-            + " Answer the following question: "
-            + user_input
-        )
-        return prompt
+        try: 
+            # Führe Similarity Search durch
+            retrieved_docs = self.similarity_search(user_input, k=k)
+            
+            if not retrieved_docs:
+                print(f"[{datetime.now()}] WARNUNG: Keine relevanten Chunks gefunden")
+                return f"Question: {user_input}\n\nI don't have enough context to answer this question."
+            
+            # Baue Kontext aus den Top-K Chunks
+            retrieved_context = "\n".join([
+                f"[Chunk {i+1} - Similarity: {doc['similarity_score']:.4f}]\n{doc['embedding_text']}"
+                for i, doc in enumerate(retrieved_docs)
+            ])
+
+            # Erstelle augmented prompt
+            augmented_prompt = f"""Given the context below answer the question.\n
+Question: {user_input}\n 
+Context: \n{retrieved_context}\n
+Remember to answer only based on the context provided and not from any other source.\n
+If the question cannot be answered based on the provided context, say I don't know.
+"""
+                        
+            print(f"[{datetime.now()}] Prompt mit {len(retrieved_docs)} Kontext-Chunks erstellt")
+            return augmented_prompt
+
+        except Exception as e:
+            print(f"[{datetime.now()}] FEHLER beim Prompt-Building: {e}")
+            raise
+
+    def query_llm(self, prompt: str, temperature: float = 0.0) -> str:
+        """
+        Sendet Prompt an lokalen LLM-Service
+        
+        Args:
+            prompt: Der augmented prompt mit Kontext
+            temperature: Temperatur für Response-Generierung
+            
+        Returns:
+            LLM Response als String
+        """
+        try:
+            print(f"[{datetime.now()}] Sende Query an LLM-Service (Modell: {self.llm_model_name})...")
+            
+            response = requests.post(
+                f"{self.llm_service_url}/query",
+                json={
+                    "prompt": prompt,
+                    "temperature": temperature
+                },
+                timeout=120  # 2 Minuten Timeout
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            llm_response = result.get("response", "")
+            print(f"[{datetime.now()}] LLM Response erhalten ({len(llm_response)} Zeichen)")
+        
+            return llm_response
+        
+        except Exception as e:
+            print(f"[{datetime.now()}] FEHLER bei LLM Query: {e}")
+            raise
+    
+    def answer_query(self, user_input: str, k: int = 2, temperature: float = 0.0) -> dict:
+        """
+        High-Level Funktion: Kompletter RAG-Pipeline-Durchlauf
+        
+        1. Similarity Search
+        2. Prompt Building mit Kontext
+        3. LLM Query
+        4. Response
+        
+        Args:
+            user_input: Die Frage/Anfrage des Users
+            k: Anzahl der Top-K ähnlichsten Chunks
+            model: lokales LLM Modell
+            temperature: LLM Temperature
+            
+        Returns:
+            Dictionary mit Query, Kontext, Prompt und Response
+        """
+        print(f"\n{'='*60}")
+        print(f"RAG QUERY GESTARTET")
+        print(f"{'='*60}")
+        print(f"Query: {user_input}")
+        print(f"Top-K: {k}")
+        print(f"Model: {self.llm_model_name}")
+        print(f"{'='*60}\n")
+        
+        # 1. Hole relevante Chunks
+        retrieved_docs = self.similarity_search(user_input, k=k)
+        # 2. Baue Prompt
+        augmented_prompt = self.build_prompt_with_context(user_input, k=k)
+        # 3. Query LLM
+        llm_response = self.query_llm(augmented_prompt, temperature=temperature)
+        
+        print(f"\n{'='*60}")
+        print(f"RAG QUERY ABGESCHLOSSEN")
+        print(f"{'='*60}\n")
+        
+        return {
+            "query": user_input,
+            "retrieved_chunks": retrieved_docs,
+            "augmented_prompt": augmented_prompt,
+            "response": llm_response,
+            "model": self.llm_model_name,
+            "k": k
+        }
