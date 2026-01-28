@@ -10,11 +10,6 @@ services:
       - EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-de
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   backend:
     build:
@@ -24,8 +19,6 @@ services:
       - "8000:8000"
     environment:
       - EMBEDDING_SERVICE_URL=http://embedding-service:8001
-    depends_on:
-      - embedding-service
     networks:
       - app-network
 
