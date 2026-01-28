@@ -8,10 +8,31 @@ services:
       - "8001:8001"
     environment:
       - EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-de
+      - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ingestion-service:
+    build:
+      context: ./Lakehouse
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
+      - UPLOAD_DIR=/tmp/uploads
+    volumes:
+      - ducklake-data:/app/DuckLake
+      - ingestion-upload:/tmp/uploads
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -24,8 +45,14 @@ services:
       - "8000:8000"
     environment:
       - EMBEDDING_SERVICE_URL=http://embedding-service:8001
+      - INGESTION_SERVICE_URL=http://ingestion-service:8002
+      - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
+      - DUCKDB_READ_ONLY=true
     depends_on:
       - embedding-service
+      - ingestion-service
+    volumes:
+      - ducklake-data:/app/DuckLake
     networks:
       - app-network
 
@@ -41,3 +68,7 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  ducklake-data:
+  ingestion-upload:

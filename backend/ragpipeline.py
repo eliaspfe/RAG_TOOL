@@ -10,9 +10,10 @@ class RagPipeline:
 
     def __init__(
         self,
-        db_path: str = "DuckLake/ducklake.duckdb",
+        db_path: str = os.getenv("DUCKDB_PATH", "/app/DuckLake/ducklake.duckdb"),
         embedding_service_url: str = "http://embedding-service:8001",
         llm_service_url: str = "http://llm-service:11434",
+        ingestion_service_url: str = os.getenv("INGESTION_SERVICE_URL", "http://ingestion-service:8002"),
         schema_name: str = "embeddings"
     ):
         """
@@ -26,7 +27,9 @@ class RagPipeline:
         self.db_path = db_path
         self.embedding_service_url = embedding_service_url
         self.llm_service_url = llm_service_url
+        self.ingestion_service_url = ingestion_service_url
         self.schema_name = schema_name
+        self.read_only_db = os.getenv("DUCKDB_READ_ONLY", "false").lower() == "true"
         self.embedding_dim = None
         self.model_name = None
         self.llm_model_name = None
@@ -101,7 +104,12 @@ class RagPipeline:
         # Erstelle Verzeichnis falls nicht vorhanden
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         
-        self.conn = duckdb.connect(self.db_path)
+        # Optional read-only Modus, um Schreib-Locks zu vermeiden
+        self.conn = duckdb.connect(self.db_path, read_only=self.read_only_db)
+        
+        if self.read_only_db:
+            print(f"[{datetime.now()}] DuckDB im Read-Only Modus geöffnet (keine Schema-Änderungen)")
+            return
         
         # Installiere und lade VSS Extension für Vektor-Ähnlichkeitssuche
         self.conn.execute("INSTALL vss;")
@@ -169,14 +177,30 @@ class RagPipeline:
     # ============================================================================
     # NOAH'S BEREICH: PDF-Extraktion und DuckLake Pipeline
     # ============================================================================
-    def ducklake(self, file_path):  # Noah
+    def ducklake(self, file_path: str):
         """
-        TODO (Noah): Implementiere hier die DuckLake-Pipeline
-        - PDF-Extraktion (Bronze Layer)
-        - Text-Bereinigung (Silver Layer)
-        - Chunking (Gold Layer)
+        Startet die DuckLake-Ingestion-Pipeline im dedizierten Ingestion-Service.
+
+        Args:
+            file_path: Vollständiger Pfad zur zu verarbeitenden PDF.
+
+        Returns:
+            Response-Payload des Ingestion-Services (z. B. doc_id, file_path).
         """
-        return "Daten aus PDFs extrahiert und in DuckDB gespeichert."
+        if not file_path:
+            raise ValueError("file_path must not be empty")
+
+        try:
+            response = requests.post(
+                f"{self.ingestion_service_url}/ingest",
+                json={"file_path": file_path},
+                timeout=1200,  # 20 Minuten für große PDFs
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"[{datetime.now()}] FEHLER beim Starten der DuckLake-Pipeline: {e}")
+            raise
 
     # ============================================================================
     # FELIX'S BEREICH: Embedding-Funktionalität

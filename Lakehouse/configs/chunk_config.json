@@ -1,0 +1,6 @@
+{
+  "target_chars": 3000,
+  "overlap_chars": 450,
+  "overlap_sentences": 1,
+  "pages_per_run": 3
+}
