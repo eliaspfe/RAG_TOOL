@@ -25,8 +25,6 @@ services:
       - "8000:8000"
     environment:
       - EMBEDDING_SERVICE_URL=http://embedding-service:8001
-    depends_on:
-      - embedding-service
     networks:
       - app-network
 
