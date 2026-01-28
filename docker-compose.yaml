@@ -14,8 +14,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 30s
+      retries: 10
+      start_period: 120s
 
   ingestion-service:
     build:
@@ -53,6 +54,7 @@ services:
       - ingestion-service
     volumes:
       - ducklake-data:/app/DuckLake
+
     networks:
       - app-network
 
