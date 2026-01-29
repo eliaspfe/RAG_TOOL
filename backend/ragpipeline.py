@@ -253,7 +253,7 @@ class RagPipeline:
         Returns:
             Liste von Chunk-Dictionaries
         """
-        query = "SELECT * FROM gold_chunks WHERE 1=1"
+        query = f"SELECT * FROM {self.schema_name}.gold_chunks"
         params = []
 
         if chunk_config_id:
@@ -573,8 +573,6 @@ class RagPipeline:
 
         return chunks
 
-
-
     def process_all_embeddings(
         self, chunk_config_id: str = None, doc_id: int = None
     ) -> dict:
@@ -622,7 +620,6 @@ class RagPipeline:
         )
         print(f"{'='*60}\n")
 
-
         return {
             "chunks": chunk_results,
             # "tables": table_results,
@@ -630,7 +627,7 @@ class RagPipeline:
                 "total_inserted": total_inserted,
                 "total_skipped": total_skipped,
                 "total_processed": total_processed,
-            }
+            },
         }
 
     def close(self):
