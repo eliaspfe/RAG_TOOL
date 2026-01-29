@@ -1,9 +1,0 @@
-.venv
-__pycache__
-*.pyc
-DuckLake
-data/gold/chunks_parquet
-data/silver/extracted
-*.db
-*.duckdb
-.DS_Store

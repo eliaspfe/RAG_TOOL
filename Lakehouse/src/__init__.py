@@ -1,1 +1,0 @@
-# DuckLake pipeline package

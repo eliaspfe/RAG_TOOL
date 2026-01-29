@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY backend.py .
 COPY ragpipeline.py .
-# COPY .env .
+COPY .env .
 COPY requirements.txt .
 COPY sample.pdf .
 

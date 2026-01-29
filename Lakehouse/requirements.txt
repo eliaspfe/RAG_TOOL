@@ -1,9 +1,0 @@
-duckdb>=0.10.0
-unstructured[local-inference,pdf]>=0.12.6
-layoutparser[layoutmodels]>=0.3.4
-torch>=2.1.0
-torchvision>=0.16.0
-pdf2image>=1.17.0
-fastapi>=0.110.0
-uvicorn>=0.30.0
-python-multipart>=0.0.9
