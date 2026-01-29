@@ -58,6 +58,9 @@ model = ChatOpenAI(
 agent = create_agent(model, system_prompt=SYS_PROMPT, checkpointer=checkpointer)
 config = {"configurable": {"thread_id": "1"}}
 
+pipeline.pdf_chunk_and_store("./sample.pdf")
+pipeline.load_and_embed_chunks()
+
 
 class LLMRequest(BaseModel):
     query: str
@@ -71,10 +74,9 @@ def get_latest_ai_message(messages) -> AIMessage | None:
 
 
 # Test Ragpipeline Object
-@app.get("/test")
-def test_endpoint():
-    x = pipeline.test_func()
-    return {"result": x}
+@app.post("/upload_pdf")
+def upload_pdf():
+    return {"status": "PDF processed and chunks stored."}
 
 
 @app.post("/run_query")
@@ -84,8 +86,11 @@ def run_query(request: LLMRequest) -> dict:
     # 2. Build Prompt LLM with context and user query
 
     # 3. Invoke LLM with the prompt
+    final_prompt = pipeline.build_prompt(request.query, top_k=5)
+    print(pipeline.similarity_search(request.query, top_k=5))
+    print(final_prompt)
     response = agent.invoke(
-        {"messages": [{"role": "user", "content": request.query}]},
+        {"messages": [{"role": "user", "content": final_prompt}]},
         config=config,
     )
 
