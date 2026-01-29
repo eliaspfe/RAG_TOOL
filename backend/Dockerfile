@@ -6,6 +6,7 @@ COPY backend.py .
 COPY ragpipeline.py .
 # COPY .env .
 COPY requirements.txt .
+COPY sample.pdf .
 
 RUN pip install -r requirements.txt
 

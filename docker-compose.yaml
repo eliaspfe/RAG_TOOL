@@ -52,8 +52,8 @@ services:
     depends_on:
       - embedding-service
       # - ingestion-service
-    volumes:
-      - ducklake-data:/app/DuckLake
+    #volumes:
+     # - ducklake-data:/app/DuckLake
 
     networks:
       - app-network

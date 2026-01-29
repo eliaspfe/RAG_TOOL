@@ -144,8 +144,7 @@ class RagPipeline:
                 embedding_id INTEGER PRIMARY KEY DEFAULT nextval('{self.schema_name}.chunk_embeddings_seq'),
                 chunk_id VARCHAR NOT NULL,
                 chunk_row_id INTEGER NOT NULL,
-                doc_id INTEGER NOT NULL,
-                embedding_text VARCHAR NOT NULL,
+                chunk_text VARCHAR NOT NULL,
                 embedding FLOAT[{self.embedding_dim}] NOT NULL,
                 embedding_type VARCHAR DEFAULT 'text',
                 chunk_config_id VARCHAR,
@@ -153,26 +152,6 @@ class RagPipeline:
                 model_name VARCHAR,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(chunk_id, embedding_type, model_name)
-            )
-        """
-        )
-
-        # Erstelle Tabelle für Tabellen-Embeddings (verknüpft mit silver_tables)
-        self.conn.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {self.schema_name}.table_embeddings (
-                embedding_id INTEGER PRIMARY KEY,
-                table_id INTEGER NOT NULL,
-                doc_id INTEGER NOT NULL,
-                page INTEGER NOT NULL,
-                table_index INTEGER NOT NULL,
-                row_index INTEGER,
-                section VARCHAR,
-                embedding_text VARCHAR NOT NULL,
-                embedding FLOAT[{self.embedding_dim}] NOT NULL,
-                model_name VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(table_id, row_index, model_name)
             )
         """
         )
@@ -376,14 +355,13 @@ class RagPipeline:
                     self.conn.execute(
                         f"""
                         INSERT INTO {self.schema_name}.chunk_embeddings 
-                        (chunk_id, chunk_row_id, doc_id, embedding_text, embedding, 
+                        (chunk_id, chunk_row_id, chunk_text, embedding, 
                          embedding_type, chunk_config_id, run_id, model_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                         (
                             chunk["chunk_id"],
                             chunk["chunk_row_id"],
-                            chunk["doc_id"],
                             chunk["chunk_text"],
                             embedding,  # embedding ist bereits eine Liste
                             "text",
@@ -595,34 +573,7 @@ class RagPipeline:
 
         return chunks
 
-    def get_stats(self) -> dict:
-        """
-        Gibt Statistiken über gespeicherte Embeddings zurück
 
-        Returns:
-            Dictionary mit Chunk-Count, Tabellen-Count und Dokument-Count
-        """
-        chunk_stats = self.conn.execute(
-            f"""
-            SELECT COUNT(*) as count, COUNT(DISTINCT doc_id) as docs 
-            FROM {self.schema_name}.chunk_embeddings
-        """
-        ).fetchone()
-
-        table_stats = self.conn.execute(
-            f"""
-            SELECT COUNT(*) as count, COUNT(DISTINCT table_id) as tables 
-            FROM {self.schema_name}.table_embeddings
-        """
-        ).fetchone()
-
-        return {
-            "chunk_embeddings": chunk_stats[0],
-            "table_embeddings": table_stats[0],
-            "total_embeddings": chunk_stats[0] + table_stats[0],
-            "unique_docs": chunk_stats[1],
-            "unique_tables": table_stats[1],
-        }
 
     def process_all_embeddings(
         self, chunk_config_id: str = None, doc_id: int = None
@@ -671,8 +622,6 @@ class RagPipeline:
         )
         print(f"{'='*60}\n")
 
-        # Hole aktuelle Datenbankstatistiken
-        db_stats = self.get_stats()
 
         return {
             "chunks": chunk_results,
@@ -681,8 +630,7 @@ class RagPipeline:
                 "total_inserted": total_inserted,
                 "total_skipped": total_skipped,
                 "total_processed": total_processed,
-            },
-            "database_stats": db_stats,
+            }
         }
 
     def close(self):
@@ -719,8 +667,7 @@ class RagPipeline:
                 SELECT 
                     embedding_id,
                     chunk_id,
-                    doc_id,
-                    embedding_text,
+                    chunk_text,
                     array_cosine_similarity(embedding, ?::FLOAT[{self.embedding_dim}]) as similarity_score,
                     chunk_config_id,
                     model_name
@@ -735,8 +682,7 @@ class RagPipeline:
             columns = [
                 "embedding_id",
                 "chunk_id",
-                "doc_id",
-                "embedding_text",
+                "chunk_text",
                 "similarity_score",
                 "chunk_config_id",
                 "model_name",
