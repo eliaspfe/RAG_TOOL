@@ -58,6 +58,10 @@ model = ChatOpenAI(
 agent = create_agent(model, system_prompt=SYS_PROMPT, checkpointer=checkpointer)
 config = {"configurable": {"thread_id": "1"}}
 
+pipeline.pdf_chunk_and_store(
+    "/Users/eliaspfeiffer/Developer/RAG_TOOL/backend/sample.pdf"
+)
+
 
 class LLMRequest(BaseModel):
     query: str

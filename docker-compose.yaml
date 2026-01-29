@@ -18,25 +18,25 @@ services:
       retries: 10
       start_period: 120s
 
-  ingestion-service:
-    build:
-      context: ./Lakehouse
-      dockerfile: Dockerfile
-    ports:
-      - "8002:8002"
-    environment:
-      - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
-      - UPLOAD_DIR=/tmp/uploads
-    volumes:
-      - ducklake-data:/app/DuckLake
-      - ingestion-upload:/tmp/uploads
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # ingestion-service:
+  #   build:
+  #     context: ./Lakehouse
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8002:8002"
+  #   environment:
+  #     - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
+  #     - UPLOAD_DIR=/tmp/uploads
+  #   volumes:
+  #     - ducklake-data:/app/DuckLake
+  #     - ingestion-upload:/tmp/uploads
+  #   networks:
+  #     - app-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   backend:
     build:
@@ -46,12 +46,12 @@ services:
       - "8000:8000"
     environment:
       - EMBEDDING_SERVICE_URL=http://embedding-service:8001
-      - INGESTION_SERVICE_URL=http://ingestion-service:8002
-      - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
-      - DUCKDB_READ_ONLY=true
+      # - INGESTION_SERVICE_URL=http://ingestion-service:8002
+      # - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
+      # - DUCKDB_READ_ONLY=true
     depends_on:
       - embedding-service
-      - ingestion-service
+      # - ingestion-service
     volumes:
       - ducklake-data:/app/DuckLake
 
@@ -71,6 +71,6 @@ networks:
   app-network:
     driver: bridge
 
-volumes:
-  ducklake-data:
-  ingestion-upload:
+# volumes:
+#   ducklake-data:
+#   ingestion-upload:
