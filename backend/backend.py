@@ -119,6 +119,26 @@ def run_query(request: LLMRequest) -> dict:
     return {"content": latest_ai.content}
 
 
+@app.get("/list_pdfs")
+def list_pdfs():
+    files = []
+    for f in os.listdir(UPLOAD_DIR):
+        if f.lower().endswith(".pdf"):
+            files.append(f)
+    return {"files": files}
+
+
+@app.post("/delete_index")
+def delete_index():
+    try:
+        pipeline.remove_all_data()
+        if os.path.exists(UPLOAD_DIR):
+            shutil.rmtree(UPLOAD_DIR)
+        return {"status": "Index gelöscht"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     # Run the FastAPI app
     import uvicorn

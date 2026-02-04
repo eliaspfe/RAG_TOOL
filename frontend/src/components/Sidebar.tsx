@@ -1,8 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Sidebar() {
   const [files, setFiles] = useState<FileList | null>(null);
   const [status, setStatus] = useState<string>("Keine laufende Verarbeitung");
+  const [uploadedDocs, setUploadedDocs] = useState<string[]>([]);
+
+  const fetchUploadedDocs = async () => {
+    const res = await fetch("http://127.0.0.1:8000/list_pdfs");
+    const data = await res.json();
+    setUploadedDocs(data.files);
+  };
+
+  useEffect(() => {
+    fetchUploadedDocs();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -28,6 +39,7 @@ export default function Sidebar() {
     }
 
     setStatus("Upload abgeschlossen");
+    fetchUploadedDocs(); // Liste neu laden
   };
 
   const buildIndex = async () => {
@@ -38,13 +50,34 @@ export default function Sidebar() {
         method: "POST",
       });
 
-      if (!res.ok) throw new Error("Index-Fehler");
+      if (!res.ok) throw new Error();
 
       setStatus("Index erfolgreich aufgebaut");
     } catch {
       setStatus("Fehler beim Index-Aufbau");
     }
   };
+
+  const deleteIndex = async () => {
+  const ok = confirm("Willst du den Index wirklich löschen?");
+  if (!ok) return;
+
+  setStatus("Index wird gelöscht...");
+
+  try {
+    const res = await fetch("http://127.0.0.1:8000/delete_index", {
+      method: "POST",
+    });
+
+    if (!res.ok) throw new Error();
+
+    setStatus("Index gelöscht");
+    setUploadedDocs([]);
+  } catch {
+    setStatus("Fehler beim Löschen des Index");
+  }
+};
+
 
   return (
     <aside className="sidebar">
@@ -62,12 +95,28 @@ export default function Sidebar() {
       </div>
 
       <div className="section">
+        <label>Hochgeladene Dokumente</label>
+        <ul>
+          {uploadedDocs.length === 0 && <li>Keine Dokumente</li>}
+          {uploadedDocs.map((doc) => (
+            <li key={doc}>{doc}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="section">
         <label>Status</label>
         <div className="status">{status}</div>
         <button className="secondary" onClick={buildIndex}>
           Index neu aufbauen
         </button>
+        <button className="secondary" onClick={deleteIndex}>
+          Index und pdfs löschen
+        </button>
       </div>
+
+      
     </aside>
+
   );
 }

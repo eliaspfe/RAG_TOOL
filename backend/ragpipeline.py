@@ -175,6 +175,14 @@ class RagPipeline:
         self.chunks_to_duckdb(chunks)
         print(f"[{datetime.now()}] Chunks in DuckDB gespeichert")
 
+    def remove_all_data(self):
+        """
+        Entfernt alle Daten aus den Tabellen.
+        """
+        self.conn.execute(f"DELETE FROM {self.schema_name}.gold_chunk_embeddings;")
+        self.conn.execute(f"DELETE FROM {self.schema_name}.gold_chunks;")
+        print("Alle Daten wurden entfernt.")
+
     def similarity_search(self, query: str, top_k: int = 5):
         response = self.client.embeddings.create(
             model="text-embedding-3-small", input=query
