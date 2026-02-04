@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from datetime import datetime
 import os
+import uuid
 
 
 class RagPipeline:
@@ -139,8 +140,9 @@ class RagPipeline:
 
         inserted = 0
 
-        for idx, chunk_text in enumerate(chunks):
-            chunk_id = str(idx + 1)  # VARCHAR laut Schema
+        for chunk_text in chunks:
+
+            chunk_id = str(uuid.uuid4())  # VARCHAR laut Schema
 
             try:
                 self.conn.execute(
