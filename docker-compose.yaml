@@ -7,7 +7,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-de
+      - EMBEDDING_MODEL=intfloat/multilingual-e5-small
       - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
     networks:
       - app-network
