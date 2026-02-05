@@ -21,9 +21,8 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-2) System dependencies for hi_res/table extraction:
+2) System dependencies for PDF extraction:
    - Poppler (`pdfinfo`): e.g. macOS `brew install poppler`, Debian/Ubuntu `apt install poppler-utils`.
-   - Optional OCR (for table images): Tesseract installed on the system (`brew install tesseract` or `apt install tesseract-ocr`), then set `ocr_languages` if needed.
 3) PDF liegt bereits unter `data/bronze/pdfs/google-doc-document.pdf` (Pfad muss existieren).
 
 Ausführung
@@ -43,8 +42,8 @@ Docker
 Was passiert
 ------------
 - Bronze: PDF wird gehasht (sha256), Metadaten gespeichert (`bronze_documents`), idempotent über (content_hash, source_uri).
-- Silver: Extraktion via `unstructured` (bevorzugt `strategy=hi_res`, fallback `fast`, jeweils mit `infer_table_structure=True`). Fließtext wird gereinigt (Zeilenumbrüche, Silbentrennung, Header/Footer-Detektion) und in `silver_extracted_text` gespeichert. Tabellen werden separat als strukturierte JSON-Repräsentationen (inkl. page/table_index, optional caption/html) in `silver_tables` abgelegt, nicht in den Fließtext geflattet.
-- Gold: Textseiten werden in Runs (`pages_per_run`) gemergt und gechunked (target_chars/overlap). Tabellen werden als atomare Chunks mit `chunk_type='table'` in `gold_chunks` referenziert (`table_id`), Text-Chunks mit `chunk_type='text'`. Export als partitioniertes Parquet unter `data/gold/chunks_parquet/`.
+- Silver: Extraktion via `unstructured` ausschließlich mit `strategy=fast`. Fließtext wird gereinigt (Zeilenumbrüche, Silbentrennung, Header/Footer-Detektion) und in `silver_extracted_text` gespeichert.
+- Gold: Textseiten werden in Runs (`pages_per_run`) gemergt und gechunked (target_chars/overlap). Chunks werden in `gold_chunks` gespeichert und als partitioniertes Parquet unter `data/gold/chunks_parquet/` exportiert.
 - Status-Updates in `bronze_documents.status`: `NEW` → `EXTRACTED` → `CHUNKED`, im Fehlerfall `FAILED` + error_message.
 
 Konfiguration
@@ -60,5 +59,5 @@ Acceptance
 `python -m src.pipeline run` erzeugt (bei vorhandener PDF):
 - DuckLake/ducklake.duckdb mit Tabellen bronze/silver/gold
 - Bronze-Eintrag (idempotent bei erneutem Lauf)
-- Silver-Seiten (clean_text + raw_text) mit konsistenter Seitennummerierung sowie strukturierte Tabellen (`silver_tables`)
-- Gold-Chunks mit stabilem chunk_config_id/run_id, chunk_type (text/table), Parquet-Export
+- Silver-Seiten (clean_text + raw_text) mit konsistenter Seitennummerierung
+- Gold-Chunks mit stabilem chunk_config_id/run_id, Parquet-Export

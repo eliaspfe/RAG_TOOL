@@ -8,6 +8,7 @@ LOGGER = logging.getLogger(__name__)
 
 # DEFAULT_DB_PATH = Path("DuckLake/ducklake.duckdb")
 DEFAULT_DB_PATH = Path(os.getenv("DUCKDB_PATH", "/app/DuckLake/ducklake.duckdb"))
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "384"))
 
 
 def get_connection(db_path: Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
@@ -20,6 +21,13 @@ def get_connection(db_path: Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection
 
 def run_migrations(con: duckdb.DuckDBPyConnection) -> None:
     LOGGER.info("Ensuring DuckLake schema exists")
+    try:
+        con.execute("INSTALL vss;")
+        con.execute("LOAD vss;")
+        LOGGER.info("DuckDB VSS extension loaded")
+    except Exception as exc:
+        LOGGER.warning("DuckDB VSS extension could not be loaded: %s", exc)
+
     con.execute("CREATE SEQUENCE IF NOT EXISTS bronze_documents_seq;")
     con.execute(
         """
@@ -40,7 +48,6 @@ def run_migrations(con: duckdb.DuckDBPyConnection) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_bronze_unique ON bronze_documents(content_hash, source_uri);"
     )
     con.execute("CREATE SEQUENCE IF NOT EXISTS silver_extracted_text_seq;")
-    con.execute("CREATE SEQUENCE IF NOT EXISTS silver_tables_seq;")
     con.execute(
         """
         CREATE TABLE IF NOT EXISTS silver_extracted_text (
@@ -57,21 +64,6 @@ def run_migrations(con: duckdb.DuckDBPyConnection) -> None:
         """
     )
     con.execute("CREATE INDEX IF NOT EXISTS idx_silver_doc_id ON silver_extracted_text(doc_id);")
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS silver_tables (
-            table_id INTEGER PRIMARY KEY DEFAULT nextval('silver_tables_seq'),
-            doc_id INTEGER NOT NULL,
-            page INTEGER NOT NULL,
-            table_index INTEGER NOT NULL,
-            table_json TEXT NOT NULL,
-            caption TEXT,
-            extracted_at TIMESTAMP NOT NULL,
-            UNIQUE(doc_id, page, table_index)
-        );
-        """
-    )
-    con.execute("CREATE INDEX IF NOT EXISTS idx_silver_tables_doc_id ON silver_tables(doc_id);")
     con.execute("CREATE SEQUENCE IF NOT EXISTS gold_chunks_seq;")
     con.execute(
         """
@@ -82,7 +74,6 @@ def run_migrations(con: duckdb.DuckDBPyConnection) -> None:
             page_start INTEGER NOT NULL,
             page_end INTEGER NOT NULL,
             text_id INTEGER,
-            table_id INTEGER,
             chunk_index INTEGER NOT NULL,
             chunk_text TEXT NOT NULL,
             char_start INTEGER NOT NULL,
@@ -110,6 +101,29 @@ def run_migrations(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(
         "ALTER TABLE gold_chunks ADD COLUMN IF NOT EXISTS chunk_type VARCHAR DEFAULT 'text';"
     )
-    con.execute("ALTER TABLE gold_chunks ADD COLUMN IF NOT EXISTS table_id INTEGER;")
     con.execute("ALTER TABLE gold_chunks ADD COLUMN IF NOT EXISTS row_start INTEGER;")
     con.execute("ALTER TABLE gold_chunks ADD COLUMN IF NOT EXISTS row_end INTEGER;")
+
+    con.execute("CREATE SEQUENCE IF NOT EXISTS gold_embeddings_seq;")
+    con.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS gold_embeddings (
+            embedding_id INTEGER PRIMARY KEY DEFAULT nextval('gold_embeddings_seq'),
+            chunk_row_id INTEGER NOT NULL,
+            chunk_id VARCHAR NOT NULL,
+            doc_id INTEGER NOT NULL,
+            chunk_text TEXT NOT NULL,
+            model_name VARCHAR NOT NULL,
+            embedding FLOAT[{EMBEDDING_DIM}] NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT now(),
+            UNIQUE(chunk_id, model_name)
+        );
+        """
+    )
+    con.execute("CREATE INDEX IF NOT EXISTS idx_gold_embeddings_chunk_id ON gold_embeddings(chunk_id);")
+    try:
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gold_embeddings_hnsw ON gold_embeddings USING HNSW (embedding) WITH (metric='cosine');"
+        )
+    except Exception as exc:
+        LOGGER.warning("HNSW index for gold_embeddings could not be created: %s", exc)

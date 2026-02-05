@@ -1,6 +1,6 @@
 import os
 import duckdb
-from typing import List, Tuple, Optional
+from typing import List
 from datetime import datetime
 import json
 import requests
@@ -153,24 +153,6 @@ class RagPipeline:
             )
         """)
         
-        # Erstelle Tabelle für Tabellen-Embeddings (verknüpft mit silver_tables)
-        self.conn.execute(f"""
-            CREATE TABLE IF NOT EXISTS {self.schema_name}.table_embeddings (
-                embedding_id INTEGER PRIMARY KEY,
-                table_id INTEGER NOT NULL,
-                doc_id INTEGER NOT NULL,
-                page INTEGER NOT NULL,
-                table_index INTEGER NOT NULL,
-                row_index INTEGER,
-                section VARCHAR,
-                embedding_text VARCHAR NOT NULL,
-                embedding FLOAT[{self.embedding_dim}] NOT NULL,
-                model_name VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(table_id, row_index, model_name)
-            )
-        """)
-        
         print(f"[{datetime.now()}] Datenbank und Schema '{self.schema_name}' initialisiert!")
         print(f"[{datetime.now()}] Embedding-Dimension: {self.embedding_dim}")
 
@@ -240,43 +222,6 @@ class RagPipeline:
         print(f"[{datetime.now()}] {len(chunks)} Chunks aus gold_chunks geladen")
         return chunks
     
-    def load_tables_from_silver(self, doc_id: int = None) -> List[dict]:
-        """
-        Lädt Tabellen aus der silver_tables Tabelle
-        
-        Args:
-            doc_id: Optional - filtert nach spezifischem Dokument
-            
-        Returns:
-            Liste von Tabellen-Dictionaries
-        """
-        query = "SELECT * FROM silver_tables WHERE 1=1"
-        params = []
-        
-        if doc_id:
-            query += " AND doc_id = ?"
-            params.append(doc_id)
-        
-        query += " ORDER BY doc_id, page, table_index"
-        
-        result = self.conn.execute(query, params).fetchall()
-        columns = [desc[0] for desc in self.conn.description]
-        
-        tables = []
-        for row in result:
-            table_dict = dict(zip(columns, row))
-            # table_json liegt bereits als JSON vor
-            if table_dict.get('table_json'):
-                # Falls es ein String ist, parse es, sonst nutze es direkt
-                if isinstance(table_dict['table_json'], str):
-                    table_dict['table_data'] = json.loads(table_dict['table_json'])
-                else:
-                    table_dict['table_data'] = table_dict['table_json']
-            tables.append(table_dict)
-        
-        print(f"[{datetime.now()}] {len(tables)} Tabellen aus silver_tables geladen")
-        return tables
-
     def embed_chunks_and_save_to_duckdb(self, chunk_config_id: str = None, doc_id: int = None) -> dict:
         """
         Lädt Chunks aus gold_chunks, erstellt Embeddings und speichert sie
@@ -344,136 +289,6 @@ class RagPipeline:
             print(f"[{datetime.now()}] FEHLER beim Embedding: {e}")
             raise
     
-    def format_table_for_embedding(self, table_data: dict) -> List[str]:
-        """
-        Formatiert eine Tabelle im JSON-Format für Embeddings
-        Erstellt separate Embeddings pro Tabellenzeile
-        
-        Args:
-            table_data: Dictionary mit caption, headers, rows, sections, page, table_index
-            
-        Returns:
-            Liste von formatierten Strings für Embeddings
-        """
-        embeddings_texts = []
-        
-        headers = table_data.get('headers', [])
-        rows = table_data.get('rows', [])
-        caption = table_data.get('caption')
-        page = table_data.get('page')
-        table_index = table_data.get('table_index', 0)
-        
-        # Header-String für alle Zeilen
-        header_str = " | ".join(headers) if headers else ""
-        
-        current_section = None
-        
-        for row_idx, row in enumerate(rows):
-            # Prüfe ob Zeile eine Section ist (nur ein Element und keine Daten)
-            if len(row) == 1 and row[0] and not any(char.isdigit() or char in ['+', '-', '%'] for char in row[0]):
-                current_section = row[0]
-                continue
-            
-            # Erstelle Embedding-Text für Datenzeile
-            if headers and len(row) == len(headers):
-                # Formatiere als "Label -> Header1 value1, Header2 value2"
-                label = row[0] if row else ""
-                values = []
-                for i in range(1, len(row)):
-                    if i < len(headers):
-                        values.append(f"{headers[i]} {row[i]}")
-                
-                embedding_text = f"Table: {header_str}\n"
-                if current_section:
-                    embedding_text += f"Section: {current_section}\n"
-                else:
-                    embedding_text += "Section: (none)\n"
-                
-                if values:
-                    embedding_text += f"Row: {label} -> {', '.join(values)}"
-                else:
-                    embedding_text += f"Row: {' | '.join(row)}"
-                
-                if caption:
-                    embedding_text += f"\nCaption: {caption}"
-                
-                embedding_text += f"\nSource: page {page} table {table_index}"
-                
-                embeddings_texts.append(embedding_text)
-        
-        return embeddings_texts
-    
-    def embed_tables_and_save_to_duckdb(self, doc_id: int = None) -> dict:
-        """
-        Lädt Tabellen aus silver_tables, erstellt Embeddings und speichert sie
-        
-        Args:
-            doc_id: Optional - filtert nach spezifischem Dokument
-            
-        Returns:
-            Dictionary mit Statistiken (inserted, skipped, total)
-        """
-        # Lade Tabellen aus DuckLake
-        tables = self.load_tables_from_silver(doc_id)
-        
-        if not tables:
-            print(f"[{datetime.now()}] WARNUNG: Keine Tabellen zum Verarbeiten")
-            return {"inserted": 0, "skipped": 0, "total": 0}
-        
-        try:
-            total_inserted = 0
-            total_skipped = 0
-            total_embeddings = 0
-            
-            for table in tables:
-                table_data = table.get('table_data', {})
-                
-                # Formatiere Tabelle für Embeddings (eine Zeile pro Embedding)
-                embedding_texts = self.format_table_for_embedding(table_data)
-                
-                if not embedding_texts:
-                    continue
-                
-                # Erstelle Embeddings für diese Tabelle
-                print(f"[{datetime.now()}] Erstelle {len(embedding_texts)} Embeddings für Tabelle {table['table_id']}...")
-                embeddings = self.get_embeddings(embedding_texts)
-                
-                # Speichere in Datenbank
-                for row_idx, (text, embedding) in enumerate(zip(embedding_texts, embeddings)):
-                    try:
-                        self.conn.execute(f"""
-                            INSERT INTO {self.schema_name}.table_embeddings 
-                            (table_id, doc_id, page, table_index, row_index, 
-                             embedding_text, embedding, model_name)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            table['table_id'],
-                            table['doc_id'],
-                            table['page'],
-                            table['table_index'],
-                            row_idx,
-                            text,
-                            embedding,  # embedding ist bereits eine Liste
-                            self.model_name
-                        ))
-                        total_inserted += 1
-                    except Exception as e:
-                        total_skipped += 1
-                
-                total_embeddings += len(embedding_texts)
-            
-            print(f"[{datetime.now()}] Tabellen-Embeddings: {total_inserted} neu, {total_skipped} übersprungen")
-            
-            return {
-                "inserted": total_inserted,
-                "skipped": total_skipped,
-                "total": total_embeddings
-            }
-            
-        except Exception as e:
-            print(f"[{datetime.now()}] FEHLER beim Tabellen-Embedding: {e}")
-            raise
-
     def load_chunked_text(self, file_path: str) -> List[str]:
         """
         LEGACY: Lädt bereits gechunkte Text-Daten aus einer Datei
@@ -516,64 +331,48 @@ class RagPipeline:
         Gibt Statistiken über gespeicherte Embeddings zurück
         
         Returns:
-            Dictionary mit Chunk-Count, Tabellen-Count und Dokument-Count
+            Dictionary mit Chunk-Count und Dokument-Count
         """
         chunk_stats = self.conn.execute(f"""
             SELECT COUNT(*) as count, COUNT(DISTINCT doc_id) as docs 
             FROM {self.schema_name}.chunk_embeddings
         """).fetchone()
-        
-        table_stats = self.conn.execute(f"""
-            SELECT COUNT(*) as count, COUNT(DISTINCT table_id) as tables 
-            FROM {self.schema_name}.table_embeddings
-        """).fetchone()
-        
+
         return {
             "chunk_embeddings": chunk_stats[0],
-            "table_embeddings": table_stats[0],
-            "total_embeddings": chunk_stats[0] + table_stats[0],
+            "total_embeddings": chunk_stats[0],
             "unique_docs": chunk_stats[1],
-            "unique_tables": table_stats[1]
         }
     
     def process_all_embeddings(self, chunk_config_id: str = None, doc_id: int = None) -> dict:
         """
-        High-Level Funktion: Verarbeitet alle Embeddings (Chunks + Tabellen)
+        High-Level Funktion: Verarbeitet alle Embeddings (Chunks)
         
         Diese Funktion orchestriert den kompletten Embedding-Prozess:
         1. Lädt und embeddet alle Chunks aus gold_chunks
-        2. Lädt und embeddet alle Tabellen aus silver_tables
-        3. Gibt kombinierte Statistiken zurück
+        2. Gibt kombinierte Statistiken zurück
         
         Args:
             chunk_config_id: Optional - filtert Chunks nach spezifischer Konfiguration
-            doc_id: Optional - filtert nach spezifischem Dokument (Chunks + Tabellen)
+            doc_id: Optional - filtert nach spezifischem Dokument
             
         Returns:
-            Dictionary mit detaillierten Statistiken für Chunks und Tabellen
+            Dictionary mit detaillierten Statistiken für Chunks
         """
         print(f"\n{'='*60}")
         print(f"EMBEDDING-VERARBEITUNG GESTARTET")
         print(f"{'='*60}\n")
         
-        # Schritt 1: Chunks embedden
-        print(f"[{datetime.now()}] Schritt 1/2: Verarbeite Chunks aus gold_chunks...")
+        print(f"[{datetime.now()}] Schritt 1/1: Verarbeite Chunks aus gold_chunks...")
         chunk_results = self.embed_chunks_and_save_to_duckdb(chunk_config_id, doc_id)
-        """
-        # Schritt 2: Tabellen embedden
-        print(f"\n[{datetime.now()}] Schritt 2/2: Verarbeite Tabellen aus silver_tables...")
-        table_results = self.embed_tables_and_save_to_duckdb(doc_id)
-        """
-        # Kombinierte Statistiken
-        total_inserted = chunk_results["inserted"] #+ table_results["inserted"]
-        total_skipped = chunk_results["skipped"] #+ table_results["skipped"]
-        total_processed = chunk_results["total"] #+ table_results["total"]
+        total_inserted = chunk_results["inserted"]
+        total_skipped = chunk_results["skipped"]
+        total_processed = chunk_results["total"]
         
         print(f"\n{'='*60}")
         print(f"EMBEDDING-VERARBEITUNG ABGESCHLOSSEN")
         print(f"{'='*60}")
         print(f"Chunks:   {chunk_results['inserted']} neu, {chunk_results['skipped']} übersprungen ({chunk_results['total']} gesamt)")
-        #print(f"Tabellen: {table_results['inserted']} neu, {table_results['skipped']} übersprungen ({table_results['total']} gesamt)")
         print(f"Total:    {total_inserted} neu, {total_skipped} übersprungen ({total_processed} gesamt)")
         print(f"{'='*60}\n")
         
@@ -582,7 +381,6 @@ class RagPipeline:
         
         return {
             "chunks": chunk_results,
-           # "tables": table_results,
             "summary": {
                 "total_inserted": total_inserted,
                 "total_skipped": total_skipped,

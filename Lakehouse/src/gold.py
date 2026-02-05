@@ -1,4 +1,3 @@
-import json
 import logging
 import re
 from datetime import datetime
@@ -6,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 import duckdb
-from bs4 import BeautifulSoup
 
 from .utils import (
     chunk_text_with_overlap,
@@ -53,87 +51,6 @@ def _load_silver_pages(con: duckdb.DuckDBPyConnection, doc_id: int) -> List[Dict
     return pages
 
 
-def _load_silver_tables(con: duckdb.DuckDBPyConnection, doc_id: int) -> List[Dict[str, Any]]:
-    rows = con.execute(
-        """
-        SELECT table_id, page, table_index, table_json, caption
-        FROM silver_tables
-        WHERE doc_id = ?
-        ORDER BY page ASC, table_index ASC;
-        """,
-        [doc_id],
-    ).fetchall()
-    tables: List[Dict[str, Any]] = []
-    for table_id, page, table_index, table_json, caption in rows:
-        try:
-            data = json.loads(table_json)
-        except Exception:
-            data = {"raw": table_json}
-        tables.append(
-            {
-                "table_id": int(table_id),
-                "page": int(page),
-                "table_index": int(table_index),
-                "table_json": data,
-                "caption": caption,
-            }
-        )
-    return tables
-
-
-def _table_chunk_text(table: Dict[str, Any]) -> str:
-    table_json = table.get("table_json") or {}
-    caption = table.get("caption")
-    html = table_json.get("text_as_html")
-    text_fallback = table_json.get("text") or table_json.get("text_fallback") or ""
-
-    def normalize_value(val: Any) -> str:
-        s = "" if val is None else str(val)
-        s = s.strip()
-        s = s.replace("\u2212", "-").replace("–", "-").replace("—", "-")
-        return s
-
-    headers: List[str] = []
-    rows: List[List[str]] = []
-
-    if html:
-        try:
-            soup = BeautifulSoup(html, "html.parser")
-            table_tag = soup.find("table") or soup
-            for tr in table_tag.find_all("tr"):
-                cells = tr.find_all(["th", "td"])
-                if not cells:
-                    continue
-                values = [normalize_value(c.get_text(separator=" ", strip=True)) for c in cells]
-                if tr.find("th") and not headers:
-                    headers = values
-                    continue
-                rows.append(values)
-        except Exception:
-            headers = []
-            rows = []
-
-    if not rows and text_fallback:
-        lines = [ln.strip() for ln in text_fallback.splitlines() if ln.strip()]
-        if lines:
-            headers = re.split(r"\s{2,}|\t", lines[0])
-            headers = [normalize_value(h) for h in headers if normalize_value(h)]
-            for line in lines[1:]:
-                values = [normalize_value(v) for v in re.split(r"\s{2,}|\t", line) if normalize_value(v)]
-                if values:
-                    rows.append(values)
-
-    payload = {
-        "page": table.get("page"),
-        "table_index": table.get("table_index"),
-        "caption": caption,
-        "headers": headers,
-        "sections": [],
-        "rows": rows,
-    }
-    return canonical_json_dumps(payload)
-
-
 def _build_runs(
     pages: Sequence[Dict[str, Any]], pages_per_run: int
 ) -> List[Dict[str, Any]]:
@@ -157,7 +74,6 @@ def chunk_document(
     run_id: str | None = None,
 ) -> Dict[str, Any]:
     pages = _load_silver_pages(con, doc_id)
-    tables = _load_silver_tables(con, doc_id)
     if not pages:
         raise RuntimeError(f"No silver pages found for doc_id={doc_id}")
 
@@ -171,9 +87,9 @@ def chunk_document(
     insert_sql = """
         INSERT INTO gold_chunks (
             chunk_id, doc_id, page_start, page_end, text_id,
-            table_id, chunk_index, chunk_text, char_start, char_end,
+            chunk_index, chunk_text, char_start, char_end,
             chunk_config_id, run_id, chunker_version, chunk_type, row_start, row_end, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """
 
     chunk_counter = 0
@@ -204,7 +120,6 @@ def chunk_document(
                     run["page_start"],
                     run["page_end"],
                     run["pages"][0].get("text_id"),
-                    None,
                     chunk_index,
                     chunk["chunk_text"],
                     chunk["char_start"],
@@ -220,44 +135,6 @@ def chunk_document(
             )
             chunk_counter += 1
             chunk_index += 1
-
-    for table in tables:
-        chunk_text = _table_chunk_text(table)
-        char_end = len(chunk_text) if chunk_text else 0
-        chunk_id = stable_chunk_id(
-            doc_id=doc_id,
-            chunk_config_id=chunk_config_id,
-            chunk_index=chunk_index,
-            page_start=table["page"],
-            page_end=table["page"],
-            char_start=0,
-            char_end=char_end,
-            chunk_text=chunk_text,
-        )
-        con.execute(
-            insert_sql,
-            [
-                chunk_id,
-                doc_id,
-                table["page"],
-                table["page"],
-                None,
-                table["table_id"],
-                chunk_index,
-                chunk_text,
-                0,
-                char_end,
-                chunk_config_id,
-                run_id,
-                chunker_version,
-                "table",
-                None,
-                None,
-                datetime.utcnow(),
-            ],
-        )
-        chunk_counter += 1
-        chunk_index += 1
 
     LOGGER.info(
         "Chunked doc_id=%s into %s chunks (config_id=%s run_id=%s)",

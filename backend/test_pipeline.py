@@ -93,7 +93,7 @@ def test_database_operations(pipeline):
         stats = pipeline.get_stats()
         print(f"✅ Statistiken:")
         print(f"   - Chunk Embeddings: {stats['chunk_embeddings']}")
-        print(f"   - Tabellen Embeddings: {stats['table_embeddings']}")
+        print(f"   - Total Embeddings: {stats['total_embeddings']}")
         
     except Exception as e:
         print(f"❌ Fehler bei DB-Operationen: {e}")
