@@ -109,14 +109,17 @@ def run_migrations(con: duckdb.DuckDBPyConnection) -> None:
         f"""
         CREATE TABLE IF NOT EXISTS gold_embeddings (
             embedding_id INTEGER PRIMARY KEY DEFAULT nextval('gold_embeddings_seq'),
-            chunk_row_id INTEGER NOT NULL,
             chunk_id VARCHAR NOT NULL,
+            chunk_row_id INTEGER NOT NULL,
             doc_id INTEGER NOT NULL,
-            chunk_text TEXT NOT NULL,
-            model_name VARCHAR NOT NULL,
+            embedding_text VARCHAR NOT NULL,
             embedding FLOAT[{EMBEDDING_DIM}] NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT now(),
-            UNIQUE(chunk_id, model_name)
+            embedding_type VARCHAR DEFAULT 'text',
+            chunk_config_id VARCHAR,
+            run_id VARCHAR,
+            model_name VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(chunk_id, embedding_type, model_name)
         );
         """
     )

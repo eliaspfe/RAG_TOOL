@@ -27,6 +27,8 @@ services:
     environment:
       - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
       - UPLOAD_DIR=/tmp/uploads
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8001
+      - EMBEDDINGS_SCHEMA=embeddings_e5_small
     volumes:
       - ducklake-data:/app/DuckLake
       - ingestion-upload:/tmp/uploads
@@ -46,9 +48,12 @@ services:
       - "8000:8000"
     environment:
       - EMBEDDING_SERVICE_URL=http://embedding-service:8001
+      - LLM_TYPE=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - INGESTION_SERVICE_URL=http://ingestion-service:8002
       - DUCKDB_PATH=/app/DuckLake/ducklake.duckdb
       - DUCKDB_READ_ONLY=true
+      - EMBEDDINGS_SCHEMA=embeddings_e5_small
     depends_on:
       - embedding-service
       - ingestion-service

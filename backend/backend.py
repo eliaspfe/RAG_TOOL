@@ -62,6 +62,10 @@ config = {"configurable": {"thread_id": "1"}}
 class LLMRequest(BaseModel):
     query: str
 
+class RAGRequest(BaseModel):
+    user_input: str
+    k: int = 2
+    temperature: float = 0.0
 
 def get_latest_ai_message(messages) -> AIMessage | None:
     for msg in reversed(messages):
@@ -92,6 +96,42 @@ def run_query(request: LLMRequest) -> dict:
     latest_ai = get_latest_ai_message(response["messages"])
 
     return {"content": latest_ai.content}
+
+
+@app.post("/answer_query")
+def answer_query(request: RAGRequest) -> dict:
+    """
+    RAG Query Endpoint: Retrieval + LLM Generation
+    
+    Args:
+        user_input: Die Frage des Users
+        k: Anzahl der Top-K ähnlichsten Chunks
+        temperature: LLM Temperature
+    
+    Returns:
+        Dictionary mit Query, Retrieved Chunks, Prompt und LLM Response
+    """
+    try:
+        result = pipeline.answer_query(
+            user_input=request.user_input,
+            k=request.k,
+            temperature=request.temperature
+        )
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/stats")
+def get_stats() -> dict:
+    """
+    Gibt Statistiken über die Embeddings zurück
+    """
+    try:
+        stats = pipeline.get_stats()
+        return stats
+    except Exception as e:
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
