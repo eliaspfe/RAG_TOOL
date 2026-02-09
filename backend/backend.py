@@ -19,6 +19,7 @@ data_lake = DataLake()
 pipeline = RagPipeline()
 UPLOAD_DIR = "./uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+sources = []
 
 app = FastAPI()
 
@@ -97,6 +98,10 @@ def run_query(request: LLMRequest) -> dict:
 
     # 3. Invoke LLM with the prompt
     final_prompt = pipeline.build_prompt(request.query, top_k=5)
+    print("Quellen:")
+    anfrage = pipeline.similarity_search(request.query, top_k=5)
+    sources = [row["doc_name"] for row in anfrage]
+    print("\n".join(sources))
     print(final_prompt)
     response = agent.invoke(
         {"messages": [{"role": "user", "content": final_prompt}]},

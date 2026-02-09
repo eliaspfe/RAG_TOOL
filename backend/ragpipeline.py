@@ -55,7 +55,9 @@ class RagPipeline:
                 array_cosine_similarity(
                     embedding,
                     CAST(? AS FLOAT[384])
-                ) AS similarity
+                ) AS similarity,
+                document_name,
+                page_number
             FROM gold.retrieval_chunks
             ORDER BY similarity DESC
             LIMIT ?
@@ -69,6 +71,8 @@ class RagPipeline:
                 "doc_id": row[1],
                 "chunk_text": row[2],
                 "similarity": row[3],
+                "doc_name": row[4],
+                "page_number": row[5],
             }
             for row in results
         ]
@@ -87,6 +91,7 @@ class RagPipeline:
 
         # Ähnlichste Texte holen
         similar_texts = self.similarity_search(query, top_k=top_k)
+        similar_texts = [row["chunk_text"] for row in similar_texts]
 
         context = "\n\n".join(
             [f"Kontext {i+1}:\n{text}" for i, text in enumerate(similar_texts)]
