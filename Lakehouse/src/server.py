@@ -26,6 +26,7 @@ def _get_db_path() -> Path:
 def _get_upload_dir() -> Path:
     return Path(os.getenv("UPLOAD_DIR", "/tmp/uploads"))
 
+
 def _get_embedding_service_url() -> str:
     return os.getenv("EMBEDDING_SERVICE_URL", "http://embedding-service:8001")
 
@@ -49,7 +50,7 @@ def _get_embeddings(texts: List[str]) -> List[List[float]]:
 
 def _embed_doc_chunks(con, doc_id: int) -> dict:
     print(f"[EMBEDDING] Starting _embed_doc_chunks for doc_id={doc_id}")
-    
+
     model_name, embedding_dim = _fetch_embedding_model_info()
     if embedding_dim != db.EMBEDDING_DIM:
         print(
@@ -57,10 +58,13 @@ def _embed_doc_chunks(con, doc_id: int) -> dict:
             f"Dimension {db.EMBEDDING_DIM} ab. Stelle EMBEDDING_DIM passend ein."
         )
 
-    rows = con.execute("""
+    rows = con.execute(
+        """
         SELECT chunk_id, chunk_row_id, doc_id, chunk_text, chunk_config_id, run_id
         FROM gold_chunks WHERE doc_id = ? ORDER BY chunk_index
-    """, [doc_id]).fetchall()
+    """,
+        [doc_id],
+    ).fetchall()
 
     if not rows:
         print(f"[EMBEDDING] No chunks found for doc_id={doc_id}")
@@ -72,7 +76,14 @@ def _embed_doc_chunks(con, doc_id: int) -> dict:
     print(f"[EMBEDDING] Got {len(embeddings)} embeddings back")
 
     inserted, skipped = 0, 0
-    for (chunk_id, chunk_row_id, doc_id_val, chunk_text, chunk_config_id, run_id), embedding in zip(rows, embeddings):
+    for (
+        chunk_id,
+        chunk_row_id,
+        doc_id_val,
+        chunk_text,
+        chunk_config_id,
+        run_id,
+    ), embedding in zip(rows, embeddings):
         try:
             con.execute(
                 """
@@ -81,7 +92,17 @@ def _embed_doc_chunks(con, doc_id: int) -> dict:
                  embedding_type, chunk_config_id, run_id, model_name)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (chunk_id, chunk_row_id, doc_id_val, chunk_text, embedding, "text", chunk_config_id, run_id, model_name),
+                (
+                    chunk_id,
+                    chunk_row_id,
+                    doc_id_val,
+                    chunk_text,
+                    embedding,
+                    "text",
+                    chunk_config_id,
+                    run_id,
+                    model_name,
+                ),
             )
             inserted += 1
         except Exception as e:
@@ -90,6 +111,7 @@ def _embed_doc_chunks(con, doc_id: int) -> dict:
 
     print(f"[EMBEDDING] Inserted {inserted} chunk embeddings, skipped {skipped}")
     return {"inserted": inserted, "skipped": skipped, "total": len(rows)}
+
 
 @app.on_event("startup")
 def startup_event():
@@ -104,20 +126,28 @@ def health():
 
 
 @app.post("/ingest")
-def ingest_by_path(request: IngestRequest):
-    pdf_path = Path(request.file_path)
-    if not pdf_path.exists():
-        raise HTTPException(status_code=400, detail=f"PDF not found: {pdf_path}")
+def ingest_all_uploads():
+    upload_dir = _get_upload_dir()
+    pdf_files = list(upload_dir.glob("*.pdf"))
 
+    if not pdf_files:
+        raise HTTPException(
+            status_code=400, detail="No PDF files found in upload directory"
+        )
+
+    results = []
     con = db.get_connection(_get_db_path())
     try:
-        doc_id = run_ingest(con, pdf_path)
-        run_extract(con, doc_id, pdf_path)
-        run_chunk(con, doc_id)
+        for pdf_path in pdf_files:
+            doc_id = run_ingest(con, pdf_path)
+            run_extract(con, doc_id, pdf_path)
+            run_chunk(con, doc_id)
+            _embed_doc_chunks(con, doc_id)
+            results.append({"doc_id": doc_id, "file_path": str(pdf_path)})
     finally:
         con.close()
 
-    return {"doc_id": doc_id, "file_path": str(pdf_path)}
+    return {"ingested": results}
 
 
 @app.post("/ingest-upload")

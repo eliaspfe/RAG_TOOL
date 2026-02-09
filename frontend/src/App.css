@@ -183,3 +183,40 @@ button.secondary {
   flex: 1;       /* nimmt restliche Höhe */
   width: 100%;
 }
+
+/* DOKUMENTENLISTE */
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #020617;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sidebar li {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  word-break: break-all;
+}
+
+.sidebar li:last-child {
+  border-bottom: none;
+}
+
+.sidebar li:hover {
+  background: #020617;
+}
+
+.sidebar ul::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar ul::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
