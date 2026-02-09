@@ -182,10 +182,11 @@ class DataLake:
         self, doc_id: int, batch_size: int = 32, embedding_model: str = "default"
     ):
         """
-        Takes Silver chunks → generates embeddings → inserts into Gold retrieval table
+        Silver chunks → Embeddings → Gold retrieval_chunks
+        Includes document_name + page_number
         """
 
-        # --- Check if already embedded ---
+        # --- Already embedded check ---
         existing = self.conn.execute(
             """
             SELECT 1 FROM gold.retrieval_chunks
@@ -199,10 +200,25 @@ class DataLake:
             print(f"[Gold] Document {doc_id} already embedded → skipping")
             return
 
-        # --- Load chunks ---
+        # --- Get document name from Bronze ---
+        doc_row = self.conn.execute(
+            """
+            SELECT doc_name
+            FROM bronze.documents
+            WHERE doc_id = ?
+            """,
+            [doc_id],
+        ).fetchone()
+
+        if not doc_row:
+            raise ValueError("Document not found in Bronze")
+
+        document_name = doc_row[0]
+
+        # --- Load chunks WITH page number ---
         rows = self.conn.execute(
             """
-            SELECT chunk_id, chunk_text
+            SELECT chunk_id, chunk_text, page_number
             FROM silver.document_chunks
             WHERE doc_id = ?
             ORDER BY chunk_index
@@ -215,30 +231,44 @@ class DataLake:
 
         chunk_ids = [str(r[0]) for r in rows]
         texts = [r[1] for r in rows]
+        page_numbers = [r[2] for r in rows]
 
         # --- Batch embedding ---
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i : i + batch_size]
             batch_chunk_ids = chunk_ids[i : i + batch_size]
+            batch_pages = page_numbers[i : i + batch_size]
 
             embeddings = self.get_embeddings(batch_texts)
 
             # --- Insert batch ---
-            for cid, text, emb in zip(batch_chunk_ids, batch_texts, embeddings):
-
+            for cid, text, page, emb in zip(
+                batch_chunk_ids, batch_texts, batch_pages, embeddings
+            ):
                 self.conn.execute(
                     """
                     INSERT INTO gold.retrieval_chunks (
                         chunk_id,
                         doc_id,
+                        document_name,
+                        page_number,
                         chunk_text,
                         embedding,
                         embedding_model,
                         token_count
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [cid, str(doc_id), text, emb, embedding_model, len(text)],
+                    [
+                        cid,
+                        str(doc_id),
+                        document_name,
+                        page,
+                        text,
+                        emb,
+                        embedding_model,
+                        len(text),
+                    ],
                 )
 
         print(f"[Gold] Embedded document {doc_id}")
