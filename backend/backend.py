@@ -13,25 +13,14 @@ from langgraph.checkpoint.memory import InMemorySaver
 import shutil
 
 from ragpipeline import RagPipeline
+from dataLake import DataLake
 
+data_lake = DataLake()
 pipeline = RagPipeline()
 UPLOAD_DIR = "./uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI()
-
-
-# service:
-# - embedding model
-# - frontend
-# backend: inklusive RAGPIPLINE Klasse
-
-# pipline = RAGPIPLINE()
-
-# funktionen der Klasse
-# pipeline.ducklake(Dateipfad) Noahs Teil -> 3 Layers, Daten werden aus den PDFs extrahiert und in DuckDB gespeichert
-# pipline.embed_chunks_and_save_to_duckdb() Felix Teil -> Chunks laufen durch das Embedding Model und werden in DuckDB gespeichert
-# pipline.build_prompt_with_context(user_query) -> User Prompt wird Embedded, ähnlichkeitssuche in der DuckDB, Kontext wird zurückgegeben (string)
 
 
 SYS_PROMPT = "You are a helpful assistant."
@@ -78,9 +67,9 @@ def build_index():
     try:
         for f in os.listdir(UPLOAD_DIR):
             file_path = os.path.join(UPLOAD_DIR, f)
-            pipeline.pdf_chunk_and_store(file_path)
+            data_lake.process_document(file_path=file_path, doc_name=f)
+            print("Processed:", f)
 
-        pipeline.load_and_embed_chunks()
         return {"status": "Index built successfully"}
 
     except Exception as e:
@@ -108,7 +97,6 @@ def run_query(request: LLMRequest) -> dict:
 
     # 3. Invoke LLM with the prompt
     final_prompt = pipeline.build_prompt(request.query, top_k=5)
-    print(pipeline.similarity_search(request.query, top_k=5))
     print(final_prompt)
     response = agent.invoke(
         {"messages": [{"role": "user", "content": final_prompt}]},
@@ -132,7 +120,7 @@ def list_pdfs():
 @app.post("/delete_index")
 def delete_index():
     try:
-        pipeline.remove_all_data()
+        data_lake.remove_all_data()
         if os.path.exists(UPLOAD_DIR):
             shutil.rmtree(UPLOAD_DIR)
         return {"status": "Index gelöscht"}

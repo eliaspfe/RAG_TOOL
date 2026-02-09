@@ -16,6 +16,23 @@ services:
       - "5173:80"
     networks:
       - app-network
+  # Embedding Service - Separater Container für Embedding-Modell
+  embedding-service:
+    build:
+      context: ./embedding
+      dockerfile: Dockerfile.embedding
+    ports:
+      - "8001:8001"
+    environment:
+      - EMBEDDING_MODEL=intfloat/multilingual-e5-small
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 120s
       
 networks:
   app-network:
