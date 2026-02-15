@@ -17,6 +17,8 @@ COPY embedding_service.py .
 # Umgebungsvariablen
 ENV EMBEDDING_MODEL=intfloat/multilingual-e5-small
 ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/models
+
 
 EXPOSE 8001
 

@@ -26,7 +26,7 @@ class DataLake:
     def initialize_db(self):
         self.conn.install_extension("vss")
         self.conn.load_extension("vss")
-        self.conn.execute(open("./sql/initialize_db.sql").read())
+        self.conn.execute(open("initialize_db.sql").read())
 
     # Bronze Layer
     def ingest_document_bronze(
@@ -167,7 +167,7 @@ class DataLake:
         """
         try:
             response = requests.post(
-                "http://localhost:8001/embed",
+                "http://embedding-service:8001/embed",
                 json={"texts": texts},
                 timeout=300,  # 5 Minuten Timeout für große Batches
             )

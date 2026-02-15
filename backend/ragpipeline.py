@@ -1,7 +1,6 @@
 import duckdb
 from openai import OpenAI
 from dotenv import load_dotenv
-from PyPDF2 import PdfReader
 from datetime import datetime
 import os
 import uuid
@@ -31,7 +30,7 @@ class RagPipeline:
         """
         try:
             response = requests.post(
-                "http://localhost:8001/embed",
+                "http://embedding-service:8001/embed",
                 json={"texts": texts},
                 timeout=300,  # 5 Minuten Timeout für große Batches
             )

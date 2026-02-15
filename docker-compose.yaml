@@ -27,6 +27,8 @@ services:
       - EMBEDDING_MODEL=intfloat/multilingual-e5-small
     networks:
       - app-network
+    volumes:
+      - hf-models:/models
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -37,3 +39,5 @@ services:
 networks:
   app-network:
     driver: bridge
+volumes:
+  hf-models:
