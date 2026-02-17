@@ -8,6 +8,7 @@ import re
 from typing import List
 from datetime import datetime
 import requests
+from openai import OpenAI
 
 
 class DataLake:
@@ -22,6 +23,8 @@ class DataLake:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = self.conn = duckdb.connect(self.db_path)
         self.initialize_db()
+        if os.getenv("EMBEDDING_TYPE") == "api":
+            self.client = OpenAI()
 
     def initialize_db(self):
         self.conn.install_extension("vss")
@@ -165,18 +168,32 @@ class DataLake:
         Returns:
             Liste von Embedding-Vektoren
         """
-        try:
-            response = requests.post(
-                "http://embedding-service:8001/embed",
-                json={"texts": texts},
-                timeout=300,  # 5 Minuten Timeout für große Batches
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result["embeddings"]
-        except Exception as e:
-            print(f"[{datetime.now()}] FEHLER beim Abrufen der Embeddings: {e}")
-            raise
+        if os.getenv("EMBEDDING_TYPE") == "local":
+            try:
+                response = requests.post(
+                    "http://embedding-service:8001/embed",
+                    json={"texts": texts},
+                    timeout=300,  # 5 Minuten Timeout für große Batches
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["embeddings"]
+            except Exception as e:
+                print(f"[{datetime.now()}] FEHLER beim Abrufen der Embeddings: {e}")
+                raise
+        elif os.getenv("EMBEDDING_TYPE") == "api":
+            try:
+                response = self.client.embeddings.create(
+                    model="text-embedding-3-small", input=texts, dimensions=384
+                )
+                return [item.embedding for item in response.data]
+            except Exception as e:
+                print(
+                    f"[{datetime.now()}] FEHLER beim Abrufen der Embeddings von OpenAI API: {e}"
+                )
+                raise
+        else:
+            raise ValueError("Invalid EMBEDDING_TYPE. Must be 'local' or 'api'.")
 
     def embed_chunks_to_gold(
         self, doc_id: int, batch_size: int = 32, embedding_model: str = "default"

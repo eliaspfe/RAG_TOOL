@@ -18,6 +18,8 @@ class RagPipeline:
         self.db_path = db_path
         self.client = OpenAI()
         self.conn = duckdb.connect(self.db_path)
+        if os.getenv("EMBEDDING_TYPE") == "api":
+            self.client = OpenAI()
 
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         # Erstellt Embeddings für eine Liste von Texten über den Embedding-Service
@@ -28,18 +30,32 @@ class RagPipeline:
         Returns:
             Liste von Embedding-Vektoren
         """
-        try:
-            response = requests.post(
-                "http://embedding-service:8001/embed",
-                json={"texts": texts},
-                timeout=300,  # 5 Minuten Timeout für große Batches
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result["embeddings"]
-        except Exception as e:
-            print(f"[{datetime.now()}] FEHLER beim Abrufen der Embeddings: {e}")
-            raise
+        if os.getenv("EMBEDDING_TYPE") == "local":
+            try:
+                response = requests.post(
+                    "http://embedding-service:8001/embed",
+                    json={"texts": texts},
+                    timeout=300,  # 5 Minuten Timeout für große Batches
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result["embeddings"]
+            except Exception as e:
+                print(f"[{datetime.now()}] FEHLER beim Abrufen der Embeddings: {e}")
+                raise
+        elif os.getenv("EMBEDDING_TYPE") == "api":
+            try:
+                response = self.client.embeddings.create(
+                    model="text-embedding-3-small", input=texts, dimensions=384
+                )
+                return [item.embedding for item in response.data]
+            except Exception as e:
+                print(
+                    f"[{datetime.now()}] FEHLER beim Abrufen der Embeddings von OpenAI API: {e}"
+                )
+                raise
+        else:
+            raise ValueError("Invalid EMBEDDING_TYPE. Must be 'local' or 'api'.")
 
     def similarity_search(self, query: str, top_k: int = 5):
         # Query embedding erzeugen (Dimension = 384)

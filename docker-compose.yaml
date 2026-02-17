@@ -3,6 +3,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    environment:
+      # local / api - Auswahl über Umgebungsvariable
+      - EMBEDDING_TYPE=api
     ports:
       - "8000:8000"
     networks:
