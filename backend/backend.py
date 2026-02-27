@@ -87,7 +87,12 @@ def upload_pdf(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    return {"status": "PDF saved", "filename": file.filename}
+    data_lake.process_document(file_path=file_path, doc_name=file.filename)
+    print("Processed:", file.filename)
+    return {
+        "status": "PDF saved and Index built successfully",
+        "filename": file.filename,
+    }
 
 
 @app.post("/run_query")
@@ -111,6 +116,14 @@ def run_query(request: LLMRequest) -> dict:
     latest_ai = get_latest_ai_message(response["messages"])
 
     return {"content": latest_ai.content}
+
+
+@app.get("/sources_from_last_query")
+def sources_from_last_query():
+    if not sources:
+        raise HTTPException(status_code=404, detail="No sources found from last query")
+    unique_sources = list(dict.fromkeys(sources))
+    return {"sources": unique_sources}
 
 
 @app.get("/list_pdfs")

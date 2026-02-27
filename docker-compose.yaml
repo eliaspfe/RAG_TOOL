@@ -5,7 +5,11 @@ services:
       dockerfile: Dockerfile
     environment:
       # local / api - Auswahl über Umgebungsvariable
-      - EMBEDDING_TYPE=api
+      - EMBEDDING_TYPE=local
+    volumes:
+      - db-data:/app/data
+      - pdf-uploads:/app/uploads
+      
     ports:
       - "8000:8000"
     networks:
@@ -44,3 +48,5 @@ networks:
     driver: bridge
 volumes:
   hf-models:
+  db-data:
+  pdf-uploads:
