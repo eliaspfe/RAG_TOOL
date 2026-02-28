@@ -6,6 +6,7 @@ services:
     environment:
       # local / api - Auswahl über Umgebungsvariable
       - EMBEDDING_TYPE=local
+      - LLM_TYPE=api
     volumes:
       - db-data:/app/data
       - pdf-uploads:/app/uploads
@@ -42,7 +43,17 @@ services:
       timeout: 30s
       retries: 10
       start_period: 120s
-      
+  llm-service:
+    build:
+      context: ./llm_service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - llm:/models
+    networks:
+    - app-network
+
 networks:
   app-network:
     driver: bridge
@@ -50,3 +61,4 @@ volumes:
   hf-models:
   db-data:
   pdf-uploads:
+  llm:

@@ -14,6 +14,7 @@ import shutil
 
 from ragpipeline import RagPipeline
 from dataLake import DataLake
+import requests
 
 data_lake = DataLake()
 pipeline = RagPipeline()
@@ -22,6 +23,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 sources = []
 
 app = FastAPI()
+LOCAL_LLM_URL = "http://127.0.0.1:8002"  # URL des lokalen LLM-Service
 
 
 SYS_PROMPT = "You are a helpful assistant."
@@ -37,6 +39,7 @@ app.add_middleware(
 )
 
 load_dotenv(override=True)
+LLM_TYPE = os.getenv("LLM_TYPE", "api")  # 'local' oder 'api'
 
 # initialize in-memory saver for message history
 checkpointer = InMemorySaver()
@@ -100,22 +103,33 @@ def run_query(request: LLMRequest) -> dict:
     # 1. Retreive context from pdf document
     # context = retrieve_context_from_pdf(request.query)
     # 2. Build Prompt LLM with context and user query
+    final_prompt = pipeline.build_prompt(request.query, top_k=5)
 
     # 3. Invoke LLM with the prompt
-    final_prompt = pipeline.build_prompt(request.query, top_k=5)
-    print("Quellen:")
-    anfrage = pipeline.similarity_search(request.query, top_k=5)
-    sources = [row["doc_name"] for row in anfrage]
-    print("\n".join(sources))
-    print(final_prompt)
-    response = agent.invoke(
-        {"messages": [{"role": "user", "content": final_prompt}]},
-        config=config,
-    )
+    if LLM_TYPE == "api":
+        print("Quellen:")
+        anfrage = pipeline.similarity_search(request.query, top_k=5)
+        sources = [row["doc_name"] for row in anfrage]
+        print("\n".join(sources))
+        print(final_prompt)
+        response = agent.invoke(
+            {"messages": [{"role": "user", "content": final_prompt}]},
+            config=config,
+        )
 
-    latest_ai = get_latest_ai_message(response["messages"])
+        latest_ai = get_latest_ai_message(response["messages"])
 
-    return {"content": latest_ai.content}
+        return {"content": latest_ai.content}
+    if LLM_TYPE == "local":
+        try:
+            response = requests.post(
+                f"{LOCAL_LLM_URL}/query", json={"prompt": final_prompt}
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            return {"content:": response_data.get("response", "")}
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/sources_from_last_query")
