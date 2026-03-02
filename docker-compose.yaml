@@ -50,6 +50,12 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8002:8002"
+    environment:
+      - LLM_MODEL=Qwen/Qwen2.5-0.5B-Instruct
+      - LLM_FALLBACK_MODELS=Qwen/Qwen2.5-0.5B-Instruct
+      - LLM_MAX_NEW_TOKENS=192
+      - LLM_TEMPERATURE=0.2
+      - LLM_TOP_P=0.9
     volumes:
       - llm:/models
     networks:

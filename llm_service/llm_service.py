@@ -12,6 +12,7 @@ llm = None
 tokenizer = None
 model_name = None
 device = None
+max_new_tokens = None
 
 
 class QueryRequest(BaseModel):
@@ -22,10 +23,25 @@ class QueryResponse(BaseModel):
     response: str
 
 
+def get_candidate_models() -> list[str]:
+    primary_model = os.getenv("LLM_MODEL", "Qwen/Qwen2.5-0.5B-Instruct").strip()
+    fallback_raw = os.getenv("LLM_FALLBACK_MODELS", "Qwen/Qwen2.5-0.5B-Instruct")
+    fallback_models = [m.strip() for m in fallback_raw.split(",") if m.strip()]
+
+    candidates = [primary_model, *fallback_models]
+    seen = set()
+    deduplicated = []
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            deduplicated.append(candidate)
+    return deduplicated
+
+
 @app.on_event("startup")
 async def load_model():
     """Load the LLM model on startup"""
-    global llm, tokenizer, model_name, device
+    global llm, tokenizer, model_name, device, max_new_tokens
 
     # Detect device (Apple MPS or CPU)
     device = (
@@ -36,22 +52,39 @@ async def load_model():
     print(f"Using device: {device}")
 
     # Load model name from environment or default
-    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-    print(f"Loading LLM model: {model_name}")
+    model_candidates = get_candidate_models()
+    model_name = model_candidates[0]
+    max_new_tokens = int(os.getenv("LLM_MAX_NEW_TOKENS", "256"))
+    print(f"Trying LLM models in order: {model_candidates}")
 
-    try:
-        print("Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+    last_error = None
 
-        print("Loading model (this may take a while)...")
-        llm = AutoModelForCausalLM.from_pretrained(
-            model_name, low_cpu_mem_usage=True
-        ).to(device)
+    for candidate in model_candidates:
+        try:
+            print(f"Loading LLM model: {candidate}")
+            print("Loading tokenizer...")
+            tokenizer = AutoTokenizer.from_pretrained(candidate)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
 
-        print(f"Model {model_name} loaded successfully!")
-    except Exception as e:
-        print(f"Error loading model {model_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load model: {e}")
+            print("Loading model (this may take a while)...")
+            llm = AutoModelForCausalLM.from_pretrained(
+                candidate, low_cpu_mem_usage=True
+            ).to(device)
+            llm.eval()
+            model_name = candidate
+
+            print(f"Model {model_name} loaded successfully!")
+            return
+        except Exception as e:
+            last_error = e
+            print(f"Error loading model {candidate}: {e}")
+            llm = None
+            tokenizer = None
+
+    print("Failed to load all candidate LLM models. Service will stay up but unavailable.")
+    if last_error is not None:
+        print(f"Last model loading error: {last_error}")
 
 
 @app.get("/health")
@@ -69,14 +102,32 @@ async def query_llm(request: QueryRequest):
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     try:
-        # Tokenize and move inputs to device
-        inputs = tokenizer(request.prompt, return_tensors="pt").to(device)
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": float(os.getenv("LLM_TEMPERATURE", "0.2")),
+            "top_p": float(os.getenv("LLM_TOP_P", "0.9")),
+            "do_sample": True,
+            "pad_token_id": tokenizer.eos_token_id,
+        }
 
-        # Generate output
-        outputs = llm.generate(**inputs, max_new_tokens=100)
-
-        # Decode to text
-        response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        if hasattr(tokenizer, "apply_chat_template"):
+            inputs = tokenizer.apply_chat_template(
+                [{"role": "user", "content": request.prompt}],
+                add_generation_prompt=True,
+                return_tensors="pt",
+            ).to(device)
+            outputs = llm.generate(inputs, **generation_kwargs)
+            generated_tokens = outputs[0][inputs.shape[-1] :]
+            response_text = tokenizer.decode(
+                generated_tokens, skip_special_tokens=True
+            ).strip()
+        else:
+            inputs = tokenizer(request.prompt, return_tensors="pt").to(device)
+            outputs = llm.generate(**inputs, **generation_kwargs)
+            generated_tokens = outputs[0][inputs["input_ids"].shape[-1] :]
+            response_text = tokenizer.decode(
+                generated_tokens, skip_special_tokens=True
+            ).strip()
 
         return QueryResponse(response=response_text)
     except Exception as e:
