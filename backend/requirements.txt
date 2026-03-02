@@ -69,6 +69,7 @@ tqdm==4.67.3
 traits==7.1.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
+unstructured==0.18.20
 urllib3==2.6.3
 uuid_utils==0.14.0
 uvicorn==0.40.0

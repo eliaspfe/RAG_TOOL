@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     environment:
       # local / api - Auswahl über Umgebungsvariable
-      - EMBEDDING_TYPE=local
+      - EMBEDDING_TYPE=api
       - LLM_TYPE=api
       - LOCAL_LLM_URL=http://llm-service:8002
     volumes:

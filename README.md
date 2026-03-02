@@ -156,6 +156,15 @@ Die `RagPipeline` stellt mehrere Kernfunktionen bereit:
     - gefundenem Kontext
   - Erzeugung eines finalen Prompts für das LLM
 
+### Chunk-Cleaning
+
+Die Chunk-Bereinigung im Backend nutzt immer `unstructured.cleaners` im Fast-Mode
+(z. B. Whitespace/Bullets/Dashes/Unicode-Quotes).
+
+Hinweis:
+- Das Backend startet nur, wenn `unstructured` installiert ist.
+- Nach Änderungen an Dependencies bitte den Backend-Container neu bauen.
+
 ### Ablauf im Backend (vereinfacht)
 
 1. Datei wird über die Upload-Route empfangen.

@@ -10,6 +10,17 @@ from datetime import datetime
 import requests
 from openai import OpenAI
 
+try:
+    from unstructured.cleaners.core import (
+        clean as unstructured_clean,
+        clean_non_ascii_chars,
+        replace_unicode_quotes,
+    )
+
+    UNSTRUCTURED_AVAILABLE = True
+except ImportError:
+    UNSTRUCTURED_AVAILABLE = False
+
 
 class DataLake:
     def __init__(
@@ -25,6 +36,11 @@ class DataLake:
         self.initialize_db()
         if os.getenv("EMBEDDING_TYPE") == "api":
             self.client = OpenAI()
+        if not UNSTRUCTURED_AVAILABLE:
+            raise RuntimeError(
+                "unstructured is required for chunk cleaning but is not installed. "
+                "Install backend requirements and rebuild the backend container."
+            )
 
     def initialize_db(self):
         self.conn.install_extension("vss")
@@ -140,6 +156,10 @@ class DataLake:
             chunks = self._chunk_text(text, chunk_size, overlap)
 
             for chunk in chunks:
+                cleaned_chunk = self._clean_chunk_text(chunk)
+                if not cleaned_chunk:
+                    continue
+
                 chunk_id = uuid.uuid4().int >> 64
 
                 self.conn.execute(
@@ -153,7 +173,7 @@ class DataLake:
                     )
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    [chunk_id, doc_id, chunk_counter, chunk, page_number],
+                    [chunk_id, doc_id, chunk_counter, cleaned_chunk, page_number],
                 )
                 chunk_counter += 1
         return pages
@@ -358,6 +378,20 @@ class DataLake:
             start += chunk_size - overlap
 
         return chunks
+
+    def _clean_chunk_text(self, text: str) -> str:
+        cleaned = self._clean_text(text)
+
+        cleaned = unstructured_clean(
+            cleaned,
+            extra_whitespace=True,
+            bullets=True,
+            dashes=True,
+        )
+        cleaned = replace_unicode_quotes(cleaned)
+        cleaned = clean_non_ascii_chars(cleaned)
+
+        return cleaned.strip()
 
     def _is_document_processed(self, doc_id: int) -> bool:
         row = self.conn.execute(
