@@ -4,6 +4,14 @@ type Message = {
   id: number;
   sender: "user" | "assistant";
   text: string;
+  contextMetadata?: ContextMetadata[];
+};
+
+type ContextMetadata = {
+  chunk_id: string;
+  doc_name: string;
+  page_number: number;
+  similarity: number;
 };
 
 const Chat: React.FC = () => {
@@ -53,6 +61,7 @@ const Chat: React.FC = () => {
             id: Date.now() + 1,
             sender: "assistant",
             text: data.content,
+            contextMetadata: data.context_metadata ?? [],
           },
         ]);
       });
@@ -66,6 +75,22 @@ const Chat: React.FC = () => {
         {messages.map((msg) => (
           <div key={msg.id} className={`message ${msg.sender}`}>
             {msg.text}
+            {msg.sender === "assistant" &&
+              msg.contextMetadata &&
+              msg.contextMetadata.length > 0 && (
+                <div className="context-metadata">
+                  <div className="context-title">Kontext-Metadaten</div>
+                  {msg.contextMetadata.map((meta, index) => (
+                    <div key={`${msg.id}-${meta.chunk_id}-${index}`}>
+                      {meta.doc_name}
+                      {meta.page_number ? ` · Seite ${meta.page_number}` : ""}
+                      {typeof meta.similarity === "number"
+                        ? ` · Score ${meta.similarity.toFixed(3)}`
+                        : ""}
+                    </div>
+                  ))}
+                </div>
+              )}
           </div>
         ))}
       </div>

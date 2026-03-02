@@ -92,6 +92,23 @@ class RagPipeline:
             for row in results
         ]
 
+    def build_prompt_from_chunks(self, query: str, similar_chunks: List[dict]):
+        context_texts = [row["chunk_text"] for row in similar_chunks]
+
+        context = "\n\n".join(
+            [f"Kontext {i+1}:\n{text}" for i, text in enumerate(context_texts)]
+        )
+
+        prompt = f"""Beantworte jede Frage des Nutzers mit Hilfe des hier übegebenen Kontextes. Sollte die Antwort nicht zu finden sein weise den Nutzer darauf hin, dass die Informationen nicht gefunden werden konnten.
+    Gesamter Kontext:
+    {context}
+
+    Nutzer Frage:
+    {query}
+    """
+
+        return prompt
+
     def build_prompt(self, query: str, top_k: int = 5):
         """
         Erstellt einen Prompt mit Kontext aus den ähnlichsten Chunks.
@@ -104,20 +121,5 @@ class RagPipeline:
             Prompt-String
         """
 
-        # Ähnlichste Texte holen
-        similar_texts = self.similarity_search(query, top_k=top_k)
-        similar_texts = [row["chunk_text"] for row in similar_texts]
-
-        context = "\n\n".join(
-            [f"Kontext {i+1}:\n{text}" for i, text in enumerate(similar_texts)]
-        )
-
-        prompt = f"""Beantworte jede Frage des Nutzers mit Hilfe des hier übegebenen Kontextes. Sollte die Antwort nicht zu finden sein weise den Nutzer darauf hin, dass die Informationen nicht gefunden werden konnten.
-    Gesamter Kontext:
-    {context}
-
-    Nutzer Frage:
-    {query}
-    """
-
-        return prompt
+        similar_chunks = self.similarity_search(query, top_k=top_k)
+        return self.build_prompt_from_chunks(query, similar_chunks)

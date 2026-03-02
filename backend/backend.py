@@ -67,6 +67,18 @@ def get_latest_ai_message(messages) -> AIMessage | None:
     return None
 
 
+def build_context_metadata(similar_chunks: list[dict]) -> list[dict]:
+    return [
+        {
+            "chunk_id": row.get("chunk_id"),
+            "doc_name": row.get("doc_name"),
+            "page_number": row.get("page_number"),
+            "similarity": row.get("similarity"),
+        }
+        for row in similar_chunks
+    ]
+
+
 @app.post("/build_index")
 def build_index():
     try:
@@ -101,16 +113,15 @@ def upload_pdf(file: UploadFile = File(...)):
 
 @app.post("/run_query")
 def run_query(request: LLMRequest) -> dict:
-    # 1. Retreive context from pdf document
-    # context = retrieve_context_from_pdf(request.query)
-    # 2. Build Prompt LLM with context and user query
-    final_prompt = pipeline.build_prompt(request.query, top_k=5)
+    global sources
+    similar_chunks = pipeline.similarity_search(request.query, top_k=5)
+    final_prompt = pipeline.build_prompt_from_chunks(request.query, similar_chunks)
+    context_metadata = build_context_metadata(similar_chunks)
+    sources = [row["doc_name"] for row in similar_chunks]
 
     # 3. Invoke LLM with the prompt
     if LLM_TYPE == "api":
         print("Quellen:")
-        anfrage = pipeline.similarity_search(request.query, top_k=5)
-        sources = [row["doc_name"] for row in anfrage]
         print("\n".join(sources))
         print(final_prompt)
         response = agent.invoke(
@@ -120,7 +131,10 @@ def run_query(request: LLMRequest) -> dict:
 
         latest_ai = get_latest_ai_message(response["messages"])
 
-        return {"content": latest_ai.content}
+        return {
+            "content": latest_ai.content,
+            "context_metadata": context_metadata,
+        }
     if LLM_TYPE == "local":
         try:
             response = requests.post(
@@ -130,7 +144,10 @@ def run_query(request: LLMRequest) -> dict:
             )
             response.raise_for_status()
             response_data = response.json()
-            return {"content": response_data.get("response", "")}
+            return {
+                "content": response_data.get("response", ""),
+                "context_metadata": context_metadata,
+            }
         except requests.ConnectionError as e:
             raise HTTPException(
                 status_code=502,
