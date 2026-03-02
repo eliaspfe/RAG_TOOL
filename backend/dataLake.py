@@ -3,7 +3,6 @@ import duckdb
 import os
 import uuid
 import hashlib
-import fitz  # PyMuPDF
 import re
 from typing import List
 from datetime import datetime
@@ -16,6 +15,7 @@ try:
         clean_non_ascii_chars,
         replace_unicode_quotes,
     )
+    from unstructured.partition.pdf import partition_pdf
 
     UNSTRUCTURED_AVAILABLE = True
 except ImportError:
@@ -105,26 +105,42 @@ class DataLake:
 
     # Silver Layer
     def extract_text_to_silver(self, doc_id: int):
-
         row = self.conn.execute(
             "SELECT file_path FROM bronze.documents WHERE doc_id = ?", [doc_id]
         ).fetchone()
 
+        if not row:
+            raise ValueError(f"Document with doc_id={doc_id} not found in bronze.documents")
+
         file_path = row[0]
 
-        pdf = fitz.open(file_path)
+        elements = partition_pdf(
+            filename=file_path,
+            strategy="fast",
+        )
 
-        full_text = []
-        pages = []
+        pages_map = {}
+        for element in elements:
+            metadata = getattr(element, "metadata", None)
+            page_number = (
+                getattr(metadata, "page_number", None) if metadata is not None else None
+            )
 
-        for page_number, page in enumerate(pdf, start=1):
-            page_text = page.get_text()
+            if page_number is None:
+                page_number = 1
 
-            pages.append({"page_number": page_number, "text": page_text})
+            text = getattr(element, "text", None) or ""
+            if not text.strip():
+                continue
 
-            full_text.append(page_text)
+            pages_map.setdefault(page_number, []).append(text)
 
-        extracted_text = "\n".join(full_text)
+        pages = [
+            {"page_number": page_number, "text": "\n".join(chunks)}
+            for page_number, chunks in sorted(pages_map.items())
+        ]
+
+        extracted_text = "\n".join([page["text"] for page in pages])
         cleaned_text = self._clean_text(extracted_text)
 
         self.conn.execute(
@@ -137,7 +153,7 @@ class DataLake:
             )
             VALUES (?, ?, ?, ?)
             """,
-            [doc_id, extracted_text, cleaned_text, "pymupdf"],
+            [doc_id, extracted_text, cleaned_text, "unstructured_fast"],
         )
 
         return pages
