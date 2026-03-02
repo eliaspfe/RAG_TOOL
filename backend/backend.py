@@ -16,6 +16,8 @@ from ragpipeline import RagPipeline
 from dataLake import DataLake
 import requests
 
+load_dotenv(override=True)
+
 data_lake = DataLake()
 pipeline = RagPipeline()
 UPLOAD_DIR = "./uploads"
@@ -23,7 +25,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 sources = []
 
 app = FastAPI()
-LOCAL_LLM_URL = "http://127.0.0.1:8002"  # URL des lokalen LLM-Service
+LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://llm-service:8002")
 
 
 SYS_PROMPT = "You are a helpful assistant."
@@ -38,8 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-load_dotenv(override=True)
-LLM_TYPE = os.getenv("LLM_TYPE", "api")  # 'local' oder 'api'
+LLM_TYPE = os.getenv("LLM_TYPE", "api").strip().lower()  # 'local' oder 'api'
 
 # initialize in-memory saver for message history
 checkpointer = InMemorySaver()
@@ -123,11 +124,31 @@ def run_query(request: LLMRequest) -> dict:
     if LLM_TYPE == "local":
         try:
             response = requests.post(
-                f"{LOCAL_LLM_URL}/query", json={"prompt": final_prompt}
+                f"{LOCAL_LLM_URL}/query",
+                json={"prompt": final_prompt},
+                timeout=180,
             )
             response.raise_for_status()
             response_data = response.json()
-            return {"content:": response_data.get("response", "")}
+            return {"content": response_data.get("response", "")}
+        except requests.ConnectionError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Local LLM service not reachable at {LOCAL_LLM_URL}. "
+                    "If backend runs in Docker, use http://llm-service:8002; "
+                    "if backend runs locally, use http://localhost:8002. "
+                    f"Original error: {e}"
+                ),
+            )
+        except requests.Timeout:
+            raise HTTPException(
+                status_code=504,
+                detail=(
+                    f"Local LLM request timed out at {LOCAL_LLM_URL}. "
+                    "The model may still be loading."
+                ),
+            )
         except requests.RequestException as e:
             raise HTTPException(status_code=500, detail=str(e))
 
