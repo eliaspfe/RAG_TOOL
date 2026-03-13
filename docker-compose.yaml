@@ -3,6 +3,15 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    environment:
+      # local / api - Auswahl über Umgebungsvariable
+      - EMBEDDING_TYPE=api
+      - LLM_TYPE=api
+      - LOCAL_LLM_URL=http://llm-service:8002
+    volumes:
+      - db-data:/app/data
+      - pdf-uploads:/app/uploads
+      
     ports:
       - "8000:8000"
     networks:
@@ -16,7 +25,47 @@ services:
       - "5173:80"
     networks:
       - app-network
-      
+  # Embedding Service - Separater Container für Embedding-Modell
+  embedding-service:
+    build:
+      context: ./embedding
+      dockerfile: Dockerfile.embedding
+    ports:
+      - "8001:8001"
+    environment:
+      - EMBEDDING_MODEL=intfloat/multilingual-e5-small
+    networks:
+      - app-network
+    volumes:
+      - hf-models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 120s
+  llm-service:
+    build:
+      context: ./llm_service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - LLM_MODEL=Qwen/Qwen2.5-0.5B-Instruct
+      - LLM_FALLBACK_MODELS=Qwen/Qwen2.5-0.5B-Instruct
+      - LLM_MAX_NEW_TOKENS=192
+      - LLM_TEMPERATURE=0.2
+      - LLM_TOP_P=0.9
+    volumes:
+      - llm:/models
+    networks:
+    - app-network
+
 networks:
   app-network:
     driver: bridge
+volumes:
+  hf-models:
+  db-data:
+  pdf-uploads:
+  llm:

@@ -13,25 +13,19 @@ from langgraph.checkpoint.memory import InMemorySaver
 import shutil
 
 from ragpipeline import RagPipeline
+from dataLake import DataLake
+import requests
 
+load_dotenv(override=True)
+
+data_lake = DataLake()
 pipeline = RagPipeline()
 UPLOAD_DIR = "./uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+sources = []
 
 app = FastAPI()
-
-
-# service:
-# - embedding model
-# - frontend
-# backend: inklusive RAGPIPLINE Klasse
-
-# pipline = RAGPIPLINE()
-
-# funktionen der Klasse
-# pipeline.ducklake(Dateipfad) Noahs Teil -> 3 Layers, Daten werden aus den PDFs extrahiert und in DuckDB gespeichert
-# pipline.embed_chunks_and_save_to_duckdb() Felix Teil -> Chunks laufen durch das Embedding Model und werden in DuckDB gespeichert
-# pipline.build_prompt_with_context(user_query) -> User Prompt wird Embedded, ähnlichkeitssuche in der DuckDB, Kontext wird zurückgegeben (string)
+LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://llm-service:8002")
 
 
 SYS_PROMPT = "You are a helpful assistant."
@@ -46,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-load_dotenv(override=True)
+LLM_TYPE = os.getenv("LLM_TYPE", "api").strip().lower()  # 'local' oder 'api'
 
 # initialize in-memory saver for message history
 checkpointer = InMemorySaver()
@@ -73,14 +67,26 @@ def get_latest_ai_message(messages) -> AIMessage | None:
     return None
 
 
+def build_context_metadata(similar_chunks: list[dict]) -> list[dict]:
+    return [
+        {
+            "chunk_id": row.get("chunk_id"),
+            "doc_name": row.get("doc_name"),
+            "page_number": row.get("page_number"),
+            "similarity": row.get("similarity"),
+        }
+        for row in similar_chunks
+    ]
+
+
 @app.post("/build_index")
 def build_index():
     try:
         for f in os.listdir(UPLOAD_DIR):
             file_path = os.path.join(UPLOAD_DIR, f)
-            pipeline.pdf_chunk_and_store(file_path)
+            data_lake.process_document(file_path=file_path, doc_name=f)
+            print("Processed:", f)
 
-        pipeline.load_and_embed_chunks()
         return {"status": "Index built successfully"}
 
     except Exception as e:
@@ -97,27 +103,79 @@ def upload_pdf(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    return {"status": "PDF saved", "filename": file.filename}
+    data_lake.process_document(file_path=file_path, doc_name=file.filename)
+    print("Processed:", file.filename)
+    return {
+        "status": "PDF saved and Index built successfully",
+        "filename": file.filename,
+    }
 
 
 @app.post("/run_query")
 def run_query(request: LLMRequest) -> dict:
-    # 1. Retreive context from pdf document
-    # context = retrieve_context_from_pdf(request.query)
-    # 2. Build Prompt LLM with context and user query
+    global sources
+    similar_chunks = pipeline.similarity_search(request.query, top_k=5)
+    final_prompt = pipeline.build_prompt_from_chunks(request.query, similar_chunks)
+    context_metadata = build_context_metadata(similar_chunks)
+    sources = [row["doc_name"] for row in similar_chunks]
 
     # 3. Invoke LLM with the prompt
-    final_prompt = pipeline.build_prompt(request.query, top_k=5)
-    print(pipeline.similarity_search(request.query, top_k=5))
-    print(final_prompt)
-    response = agent.invoke(
-        {"messages": [{"role": "user", "content": final_prompt}]},
-        config=config,
-    )
+    if LLM_TYPE == "api":
+        print("Quellen:")
+        print("\n".join(sources))
+        print(final_prompt)
+        response = agent.invoke(
+            {"messages": [{"role": "user", "content": final_prompt}]},
+            config=config,
+        )
 
-    latest_ai = get_latest_ai_message(response["messages"])
+        latest_ai = get_latest_ai_message(response["messages"])
 
-    return {"content": latest_ai.content}
+        return {
+            "content": latest_ai.content,
+            "context_metadata": context_metadata,
+        }
+    if LLM_TYPE == "local":
+        try:
+            response = requests.post(
+                f"{LOCAL_LLM_URL}/query",
+                json={"prompt": final_prompt},
+                timeout=180,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            return {
+                "content": response_data.get("response", ""),
+                "context_metadata": context_metadata,
+            }
+        except requests.ConnectionError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Local LLM service not reachable at {LOCAL_LLM_URL}. "
+                    "If backend runs in Docker, use http://llm-service:8002; "
+                    "if backend runs locally, use http://localhost:8002. "
+                    f"Original error: {e}"
+                ),
+            )
+        except requests.Timeout:
+            raise HTTPException(
+                status_code=504,
+                detail=(
+                    f"Local LLM request timed out at {LOCAL_LLM_URL}. "
+                    "The model may still be loading."
+                ),
+            )
+        except requests.RequestException as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/sources_from_last_query")
+def sources_from_last_query():
+    if not sources:
+        raise HTTPException(status_code=404, detail="No sources found from last query")
+    unique_sources = list(dict.fromkeys(sources))
+    return {"sources": unique_sources}
 
 
 @app.get("/list_pdfs")
@@ -132,7 +190,7 @@ def list_pdfs():
 @app.post("/delete_index")
 def delete_index():
     try:
-        pipeline.remove_all_data()
+        data_lake.remove_all_data()
         if os.path.exists(UPLOAD_DIR):
             shutil.rmtree(UPLOAD_DIR)
         return {"status": "Index gelöscht"}
