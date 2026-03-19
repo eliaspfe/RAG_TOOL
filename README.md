@@ -16,7 +16,7 @@ Alle Services werden über die Datei `docker-compose.yaml` gestartet und miteina
 
 # Starten der Anwendung
 
-1. .env-Datei erstellen und API-KEY einfügen (Dafür kann `env_template.txt` genutzt werden)
+1. .env-Datei im backend Ordner erstellen und API-KEY einfügen (Dafür kann `env_template.txt` genutzt werden)
 2. Im Terminal:
 
 ```bash
