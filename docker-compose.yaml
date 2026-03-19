@@ -6,6 +6,7 @@ services:
     environment:
       # local / api - Auswahl über Umgebungsvariable
       - EMBEDDING_TYPE=api
+      # local / api - Auswahl über Umgebungsvariable
       - LLM_TYPE=api
       - LOCAL_LLM_URL=http://llm-service:8002
     volumes:
